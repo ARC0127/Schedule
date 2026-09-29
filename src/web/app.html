@@ -1,0 +1,464 @@
+<div id="journal-ui" data-view="month" aria-label="Schedule 日历日志">
+  <header class="j-titlebar">
+    <div class="j-brand">
+      <button
+        type="button"
+        class="j-icon"
+        data-action="sidebar"
+        aria-label="切换侧栏"
+      >
+        <i data-lucide="panel-left" aria-hidden="true"></i></button
+      ><span class="j-brand-mark"
+        ><i data-lucide="calendar-check-2" aria-hidden="true"></i></span
+      ><strong>Schedule</strong><span class="j-preview">浏览器预览</span>
+    </div>
+    <div class="j-window-tools">
+      <button
+        type="button"
+        class="j-icon"
+        data-action="dock"
+        aria-label="最小化为桌面悬浮入口"
+        data-tooltip="最小化为悬浮入口，靠近查看今天，点击回到完整窗口"
+        hidden
+      >
+        <i data-lucide="panel-right-close" aria-hidden="true"></i></button
+      ><span class="j-local"><span></span>本地工作空间</span
+      ><button
+        type="button"
+        class="j-icon"
+        data-action="search"
+        aria-label="搜索日志"
+      >
+        <i data-lucide="search" aria-hidden="true"></i>
+      </button>
+    </div>
+  </header>
+  <div class="j-layout">
+    <button
+      type="button"
+      id="j-sidebar-resizer"
+      class="j-sidebar-resizer"
+      role="separator"
+      aria-label="调整侧栏宽度"
+      aria-orientation="vertical"
+      aria-controls="j-sidebar"
+      aria-valuemin="160"
+      aria-valuemax="420"
+      aria-valuenow="200"
+      data-tooltip="拖动调整侧栏宽度，双击恢复默认；也可用左右方向键"
+    ></button>
+    <aside id="j-sidebar" class="j-sidebar" aria-label="导航">
+      <div class="j-navgroup">
+        <button type="button" class="j-nav is-active" data-filter="all">
+          <i data-lucide="calendar-days" aria-hidden="true"></i
+          ><span>日历</span>
+        </button>
+        <button type="button" class="j-nav" data-filter="important">
+          <i data-lucide="star" aria-hidden="true"></i><span>重要事项</span
+          ><span class="j-nav-count">3</span>
+        </button>
+      </div>
+      <div class="j-nav-label j-project-label">
+        <span>项目</span
+        ><button
+          type="button"
+          class="j-icon"
+          data-action="create-project"
+          aria-label="新建项目"
+        >
+          <i data-lucide="plus" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div id="j-project-nav"></div>
+      <button type="button" class="j-nav j-project" data-filter="unbound">
+        <i data-lucide="inbox" aria-hidden="true"></i><span>未绑定</span
+        ><span class="j-unbound-count"></span>
+      </button>
+      <button
+        type="button"
+        class="j-creator"
+        data-action="creator"
+        title="制作人 ARCLIGHT · MIT 开源 · 打开个人主页"
+      >
+        <i data-lucide="info" aria-hidden="true"></i
+        ><span>制作人 · ARCLIGHT</span>
+      </button>
+    </aside>
+    <main class="j-calendar-pane">
+      <div class="j-calendar-heading">
+        <div>
+          <div class="j-eyebrow" id="j-year-label">2026</div>
+          <h1 id="j-month-label">九月</h1>
+        </div>
+        <div class="j-segment" aria-label="日历视图">
+          <button type="button" data-view="month" aria-pressed="true">月</button
+          ><button type="button" data-view="year" aria-pressed="false">
+            年
+          </button>
+        </div>
+      </div>
+      <div class="j-month-tools">
+        <span id="j-month-note">日常记录，慢慢累积</span>
+        <div class="j-month-nav">
+          <button type="button" class="j-today" data-action="today">今天</button
+          ><button
+            type="button"
+            class="j-icon"
+            data-action="previous"
+            aria-label="上一个月"
+          >
+            <i data-lucide="chevron-left" aria-hidden="true"></i></button
+          ><button
+            type="button"
+            class="j-icon"
+            data-action="next"
+            aria-label="下一个月"
+          >
+            <i data-lucide="chevron-right" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+      <div class="j-search-row" hidden>
+        <i data-lucide="search" aria-hidden="true"></i
+        ><input
+          id="j-search"
+          type="search"
+          placeholder="搜索标题、正文或文件"
+          aria-label="搜索标题、正文或文件"
+        /><button
+          type="button"
+          class="j-icon"
+          data-action="close-search"
+          aria-label="关闭搜索"
+        >
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="j-project-context" id="j-project-context" hidden></div>
+      <div id="j-month-calendar">
+        <div class="j-weekdays" aria-hidden="true">
+          <span>一</span><span>二</span><span>三</span><span>四</span
+          ><span>五</span><span>六</span><span>日</span>
+        </div>
+        <div class="j-days" id="j-days" aria-label="月份日期"></div>
+      </div>
+      <div class="j-year-grid" id="j-year-grid" hidden></div>
+      <div class="j-calendar-bottom">
+        <span
+          ><i data-lucide="sparkles" aria-hidden="true"></i
+          ><span id="j-bottom-count"></span></span
+        ><button type="button" class="j-text-button" data-action="new">
+          <span id="j-write-label">继续记录</span
+          ><i data-lucide="plus" aria-hidden="true"></i>
+        </button>
+      </div>
+    </main>
+    <section class="j-ideas-pane" aria-label="项目想法总览">
+      <div class="j-overview-heading">
+        <div>
+          <div class="j-eyebrow">想法总览 · 全部日期</div>
+          <h1 id="j-overview-title"></h1>
+        </div>
+        <div id="j-overview-tools"></div>
+      </div>
+      <div class="j-overview-summary" id="j-overview-summary"></div>
+      <div id="j-overview-list"></div>
+      <div class="j-idea-pagination" id="j-idea-pagination" hidden></div>
+    </section>
+    <section class="j-editor" aria-label="当天日志编辑区">
+      <div class="j-editor-heading">
+        <button
+          type="button"
+          class="j-icon j-back"
+          data-action="back"
+          aria-label="返回日历"
+        >
+          <i data-lucide="arrow-left" aria-hidden="true"></i>
+        </button>
+        <div>
+          <div class="j-eyebrow" id="j-selected-weekday"></div>
+          <h2 id="j-selected-date"></h2>
+        </div>
+        <button
+          type="button"
+          class="j-icon j-important"
+          data-action="important"
+          aria-label="标记为重要"
+          aria-pressed="false"
+        >
+          <i data-lucide="star" aria-hidden="true"></i>
+        </button>
+      </div>
+      <button
+        type="button"
+        class="j-schedule"
+        id="j-schedule"
+        data-action="schedule"
+      >
+        <i data-lucide="clock-3" aria-hidden="true"></i><span>添加日程</span
+        ><i data-lucide="plus" aria-hidden="true"></i></button
+      ><small id="j-schedule-status" hidden></small>
+      <div class="j-entry-meta">
+        <button
+          type="button"
+          class="j-entry-project"
+          id="j-entry-project"
+          data-action="choose-project"
+          aria-expanded="false"
+          aria-controls="j-project-picker"
+        ></button
+        ><span class="j-source" id="j-entry-source"></span>
+      </div>
+      <div class="j-project-picker" id="j-project-picker" hidden>
+        <div class="j-picker-heading">
+          <span id="j-picker-title">新想法的项目</span
+          ><button
+            type="button"
+            class="j-icon"
+            data-action="close-project-picker"
+            aria-label="关闭项目选择"
+          >
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div id="j-project-options"></div>
+        <div class="j-picker-actions">
+          <button
+            type="button"
+            class="j-text-button"
+            data-action="unbind-projects"
+          >
+            不绑定项目</button
+          ><button
+            type="button"
+            class="j-text-button"
+            data-action="create-linked-project"
+          >
+            <i data-lucide="plus" aria-hidden="true"></i>新建项目
+          </button>
+        </div>
+      </div>
+      <input
+        class="j-entry-title"
+        id="j-entry-title"
+        aria-label="日志标题"
+        placeholder="给这一天起个标题"
+        maxlength="100"
+      />
+      <div class="j-writing-tools">
+        <button
+          type="button"
+          class="j-idea-toggle"
+          data-action="idea"
+          aria-pressed="false"
+          data-tooltip="将当前行或选中文字设为想法；再次点击取消"
+        >
+          <i data-lucide="list" aria-hidden="true"></i>想法</button
+        ><button
+          type="button"
+          class="j-idea-toggle"
+          id="j-complete-idea"
+          data-action="complete-idea"
+          aria-pressed="false"
+          data-tooltip="光标在想法内时单按 Ctrl，或 Ctrl 个想法击想法，切换完成状态"
+          hidden
+        >
+          <i data-lucide="check" aria-hidden="true"></i
+          ><span>完成</span></button
+        ><span>Enter 换行 · ⇧ Enter 添加想法</span>
+      </div>
+      <div class="j-project-link-hint" id="j-project-link-hint" hidden></div>
+      <div
+        class="j-entry-body"
+        id="j-entry-body"
+        contenteditable="true"
+        role="textbox"
+        aria-multiline="true"
+        aria-label="日志正文"
+        aria-describedby="j-paste-hint"
+        data-placeholder="写下今天的记录，也可以直接粘贴图片。"
+        spellcheck="false"
+      ></div>
+      <span class="j-paste-hint" id="j-paste-hint"
+        >Ctrl + V 粘贴文字或图片</span
+      >
+      <div class="j-resources-heading">
+        <span>关联资料</span
+        ><button
+          type="button"
+          class="j-icon"
+          data-action="attach"
+          aria-label="关联本地路径"
+        >
+          <i data-lucide="plus" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div id="j-resources" class="j-resources"></div>
+      <div class="j-attach-form" hidden>
+        <label for="j-path-input">文件或文件夹路径</label
+        ><input
+          id="j-path-input"
+          type="text"
+          placeholder="D:\项目\我的文件夹"
+        /><small id="j-path-project" hidden></small>
+        <div>
+          <button
+            type="button"
+            class="j-small-button"
+            data-action="cancel-attach"
+          >
+            取消</button
+          ><button
+            type="button"
+            class="j-small-button solid"
+            data-action="confirm-attach"
+          >
+            关联
+          </button>
+        </div>
+      </div>
+      <div class="j-dropzone" id="j-dropzone">
+        <i data-lucide="paperclip" aria-hidden="true"></i
+        ><span>拖入文件，或粘贴路径关联</span>
+      </div>
+      <div class="j-editor-footer">
+        <span class="j-save-status" id="j-save-status" aria-live="polite"
+          ><i data-lucide="check" aria-hidden="true"></i>示例记录</span
+        ><span
+          id="j-idea-count"
+          data-tooltip="只统计手动想法，字数与普通换行不影响深浅"
+        ></span>
+      </div>
+    </section>
+  </div>
+  <dialog id="j-project-dialog" aria-labelledby="j-project-dialog-title">
+    <form id="j-project-form">
+      <div class="j-picker-heading">
+        <h2 id="j-project-dialog-title">新建项目</h2>
+        <button
+          type="button"
+          class="j-icon"
+          data-action="cancel-project"
+          aria-label="关闭项目设置"
+        >
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <label for="j-project-name">项目名称</label
+      ><input
+        id="j-project-name"
+        required
+        maxlength="50"
+        placeholder="例如：研究笔记"
+        autocomplete="off"
+      /><label for="j-project-root">本地文件夹 <span>可稍后关联</span></label
+      ><input
+        id="j-project-root"
+        placeholder="D:\Projects\我的项目"
+        autocomplete="off"
+      />
+      <p>一个项目可以跨越多天，同一天也可以关联多个项目。</p>
+      <small id="j-project-error" role="alert"></small>
+      <div class="j-dialog-actions">
+        <button
+          type="button"
+          class="j-small-button"
+          data-action="cancel-project"
+        >
+          取消</button
+        ><button
+          type="button"
+          data-action="save-project"
+          class="j-small-button solid"
+          id="j-project-submit"
+        >
+          创建项目
+        </button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="j-schedule-dialog" aria-labelledby="j-schedule-dialog-title">
+    <div class="j-picker-heading">
+      <div>
+        <h2 id="j-schedule-dialog-title">日程</h2>
+        <small id="j-schedule-date"></small>
+      </div>
+      <button
+        type="button"
+        class="j-icon"
+        data-action="cancel-schedule"
+        aria-label="关闭日程设置"
+      >
+        <i data-lucide="x" aria-hidden="true"></i>
+      </button>
+    </div>
+    <label for="j-schedule-title">安排什么</label
+    ><input
+      id="j-schedule-title"
+      maxlength="100"
+      placeholder="例如：讨论实验方案"
+      autocomplete="off"
+    />
+    <div class="j-schedule-fields">
+      <div>
+        <label for="j-schedule-time">时间</label
+        ><input id="j-schedule-time" type="time" required />
+      </div>
+      <div>
+        <label for="j-remind">提醒</label
+        ><select id="j-remind">
+          <option value="-1">不提醒</option>
+          <option value="0">准时</option>
+          <option value="5">提前 5 分钟</option>
+          <option value="15">提前 15 分钟</option>
+          <option value="30">提前 30 分钟</option>
+          <option value="60">提前 1 小时</option>
+        </select>
+      </div>
+    </div>
+    <label class="j-schedule-check"
+      ><input id="j-schedule-important" type="checkbox" />标为重要</label
+    >
+    <p id="j-notification-status" role="status"></p>
+    <div id="j-notification-actions" hidden>
+      <button
+        type="button"
+        class="j-text-button"
+        data-action="notification-settings"
+      >
+        Windows 通知设置</button
+      ><button
+        type="button"
+        class="j-text-button"
+        data-action="test-notification"
+      >
+        发送测试提醒
+      </button>
+    </div>
+    <small id="j-schedule-error" role="alert"></small>
+    <div class="j-dialog-actions">
+      <button
+        type="button"
+        class="j-small-button"
+        data-action="delete-schedule"
+        id="j-schedule-delete"
+      >
+        删除日程</button
+      ><button
+        type="button"
+        class="j-small-button"
+        data-action="cancel-schedule"
+      >
+        取消</button
+      ><button
+        type="button"
+        class="j-small-button solid"
+        data-action="save-schedule"
+        id="j-schedule-save"
+      >
+        保存
+      </button>
+    </div>
+  </dialog>
+  <div id="j-toast" class="j-toast" role="status" hidden></div>
+</div>

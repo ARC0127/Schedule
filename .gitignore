@@ -1,0 +1,11 @@
+.deps/
+dist/
+artifacts/
+node_modules/
+.codex/
+__pycache__/
+*.user
+*.log
+journal.json*
+WebView2/
+.env*
