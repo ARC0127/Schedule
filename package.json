@@ -1,12 +1,13 @@
 {
   "name": "schedule-desktop",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "license": "MIT",
   "author": "ARCLIGHT <https://arc0127.github.io/>",
   "scripts": {
-    "test": "node --test tests/state.test.cjs",
+    "test": "node --test tests/*.test.cjs",
     "test:native": "node tests/native.cjs",
+    "test:overview": "node tests/overview.cjs",
     "format": "prettier --write src/web tests *.md docs/*.md"
   },
   "devDependencies": {

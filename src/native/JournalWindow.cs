@@ -128,6 +128,7 @@ internal class JournalWindow : Form
                 result=await Task.Run(()=>files.Select(LocalPaths.Inspect).ToArray());
             }
             else if(op=="testNotification")result=WindowsReminders.TestNotification();
+            else if(op=="openExternal")result=ExternalLinks.Open(Convert.ToString(((Dictionary<string,object>)req["payload"])["url"]));
             else if(op=="minimize"||op=="showDock") { ShowDock();result=new {docked=true}; }
             else if(op=="restoreWindow") { OpenActivation();result=new {restored=true}; }
             else if(op=="hideToTray") { HideToTray();result=new {hidden=true}; }

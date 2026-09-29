@@ -236,7 +236,7 @@
     if (!r || r.kind === "schedule") return [];
     const meta = new Map((r.ideas || []).map((p) => [p.offset, p]));
     return ideaRanges(r.body)
-      .filter((p) => p.text.replace(/[\uE000-\uF8FF]/g, "").trim())
+      .filter((p) => p.text.trim())
       .map((p) => ({
         ...p,
         ...meta.get(p.offset),
@@ -292,7 +292,7 @@
     let count = 0,
       idea = null;
     const finish = () => {
-      if (idea !== null && idea.replace(/[\uE000-\uF8FF]/g, "").trim()) count++;
+      if (idea !== null && idea.trim()) count++;
       idea = null;
     };
     for (const line of String(body || "").split("\n")) {
@@ -528,6 +528,7 @@
     return token;
   }
   function repaintImages() {
+    renderIdeaOverview();
     if (composing) return;
     const t = bodyField(),
       focused = document.activeElement === t,
@@ -963,19 +964,56 @@
       lastDate = "";
     for (const { date, idea: p } of shown) {
       if (date !== lastDate) {
-        if (lastDate) html += "</section>";
+        if (lastDate) html += overviewResources(lastDate) + "</section>";
         html += `<section class="j-idea-day"><div class="j-idea-day-heading">${esc(date.replace(/-/g, " / "))}</div>`;
         lastDate = date;
       }
-      const text = p.text.replace(/[\uE000-\uF8FF]/g, "[图片]"),
-        names = p.projectIds.map((id) => projectById(id)?.name).filter(Boolean);
-      html += `<article class="j-overview-idea ${p.done ? "is-done" : ""}" data-idea-id="${esc(p.id)}" data-idea-date="${date}"><button type="button" class="j-overview-check" data-complete-id="${esc(p.id)}" data-idea-day="${date}" aria-label="${p.done ? "取消完成" : "标记完成"}" aria-pressed="${!!p.done}">${p.done ? "✓" : "○"}</button><div class="j-idea-content"><button type="button" class="j-idea-text" data-open-idea="${esc(p.id)}" data-idea-day="${date}">${esc(text)}</button><div class="j-idea-bindings">${esc(names.join(" · ") || "未绑定项目")}</div></div><button type="button" class="j-binding-button" data-bind-idea="${esc(p.id)}" data-idea-day="${date}" aria-label="修改此想法的项目">${names.length ? "项目" : "绑定"}</button></article>`;
+      const names = p.projectIds
+        .map((id) => projectById(id)?.name)
+        .filter(Boolean);
+      html += `<article class="j-overview-idea ${p.done ? "is-done" : ""}" data-idea-id="${esc(p.id)}" data-idea-date="${date}"><button type="button" class="j-overview-check" data-complete-id="${esc(p.id)}" data-idea-day="${date}" aria-label="${p.done ? "取消完成" : "标记完成"}" aria-pressed="${!!p.done}">${p.done ? "✓" : "○"}</button><div class="j-idea-content"><div class="j-idea-text">${overviewContent(p, date)}</div><div class="j-idea-bindings">${esc(names.join(" · ") || "未绑定项目")}</div></div><button type="button" class="j-binding-button" data-bind-idea="${esc(p.id)}" data-idea-day="${date}" aria-label="修改此想法的项目">${names.length ? "项目" : "绑定"}</button></article>`;
     }
-    if (lastDate) html += "</section>";
+    if (lastDate) html += overviewResources(lastDate) + "</section>";
     $("#j-overview-list").innerHTML =
       html ||
       `<div class="j-empty-ideas">${project ? "这个项目还没有想法" : "所有想法都已整理好"}<br>${project ? "先在右侧选择新想法的项目，再开始记录。" : "新建未绑定的想法会出现在这里。"}</div>`;
     icons();
+  }
+  function overviewContent(idea, date) {
+    const open = `data-open-idea="${esc(idea.id)}" data-idea-day="${date}"`;
+    return window.ScheduleContent.parts(idea.text)
+      .map((part) => {
+        if (part.kind === "image") {
+          const asset = imageAssets.get(part.token);
+          if (
+            asset?.src &&
+            /^data:image\/(png|jpeg|gif|webp|bmp|avif);base64,/i.test(asset.src)
+          )
+            return `<button type="button" class="j-idea-image" ${open} aria-label="查看图片所在想法"><img src="${esc(asset.src)}" alt="${esc(asset.name || "粘贴的图片")}" loading="lazy"></button>`;
+          const status =
+            asset?.status === "loading"
+              ? "正在插入图片…"
+              : asset?.status === "failed"
+                ? "图片读取失败，请重新粘贴"
+                : "图片数据不可用，请重新粘贴";
+          return `<button type="button" class="j-image-placeholder" ${open}>${status}</button>`;
+        }
+        if (part.kind === "url")
+          return `<a class="j-idea-link" href="${esc(part.url)}" data-external-url="${esc(part.url)}" target="_blank" rel="noopener noreferrer">${esc(part.text)}</a>`;
+        if (part.kind === "path")
+          return `<button type="button" class="j-idea-link" data-inline-path="${esc(part.text)}" title="打开本地路径">${esc(part.text)}</button>`;
+        return `<button type="button" class="j-idea-open" ${open}>${esc(part.text)}</button>`;
+      })
+      .join("");
+  }
+  function resourceMarkup(file, index, date) {
+    return `<button type="button" class="j-resource" data-resource="${index}" data-resource-date="${date}" aria-label="打开${esc(file.name)}"><span class="j-resource-icon"><i data-lucide="${file.kind === "folder" ? "folder" : "file-text"}" aria-hidden="true"></i></span><span class="j-resource-info"><span class="j-resource-name">${esc(file.name)}</span><span class="j-resource-path">${esc(resourcePath(file) || "未关联有效路径")}</span></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></button>`;
+  }
+  function overviewResources(date) {
+    const files = records[date].files;
+    return files.length
+      ? `<div class="j-overview-resources"><div class="j-idea-bindings" title="这一天记录的关联资料">当天资料</div>${files.map((f, i) => resourceMarkup(f, i, date)).join("")}</div>`
+      : "";
   }
   function selectedBindingIds() {
     if (!pickerTarget) return newIdeaProjects;
@@ -1697,6 +1735,7 @@
     }
     clearTimeout(saveTimer);
     await persist();
+    renderIdeaOverview();
     notify(`已关联 ${added} 项资料。`);
   }
   function renderResources() {
@@ -1716,7 +1755,7 @@
         .map((f, i) =>
           linked.some((p) => pathKey(p.root) === pathKey(resourcePath(f)))
             ? ""
-            : `<button type="button" class="j-resource" data-resource="${i}" aria-label="打开${esc(f.name)}"><span class="j-resource-icon"><i data-lucide="${f.kind === "folder" ? "folder" : "file-text"}" aria-hidden="true"></i></span><span class="j-resource-info"><span class="j-resource-name">${esc(f.name)}</span><span class="j-resource-path">${esc(resourcePath(f) || "未关联有效路径")}</span></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></button>`,
+            : resourceMarkup(f, i, state.selected),
         )
         .join("");
     icons();
@@ -1826,8 +1865,23 @@
     }, 350);
   }
   root.addEventListener("click", (e) => {
+    const link = e.target.closest("[data-external-url]");
+    if (link && root.contains(link)) {
+      e.preventDefault();
+      if (window.journalNative)
+        window.journalNative
+          .call("openExternal", { url: link.dataset.externalUrl })
+          .catch((error) => notify(error.message));
+      else
+        window.open(link.dataset.externalUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
     const b = e.target.closest("button");
     if (!b || !root.contains(b)) return;
+    if (b.dataset.inlinePath) {
+      openLocalPath(b.dataset.inlinePath);
+      return;
+    }
     if (b.dataset.projectOpen) {
       const p = projectById(b.dataset.projectOpen);
       if (p) openLocalPath(p.root);
@@ -1877,7 +1931,8 @@
       return;
     }
     if (b.dataset.resource !== undefined) {
-      const f = current().files[Number(b.dataset.resource)];
+      const f =
+        records[b.dataset.resourceDate]?.files[Number(b.dataset.resource)];
       if (f) openLocalPath(resourcePath(f));
       return;
     }

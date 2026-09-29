@@ -1271,8 +1271,43 @@
   padding: 0;
   width: 100%;
 }
-#journal-ui .j-idea-text:hover {
+#journal-ui .j-idea-open:hover {
   color: #267348;
+}
+#journal-ui .j-idea-open,
+#journal-ui .j-idea-link {
+  display: inline;
+  padding: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+  font: inherit;
+}
+#journal-ui .j-idea-link {
+  color: var(--j-green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+#journal-ui .j-idea-image {
+  display: block;
+  max-width: 100%;
+  margin: 8px 0;
+  padding: 0;
+}
+#journal-ui .j-idea-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 7px;
+}
+#journal-ui .j-overview-resources {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0 32px;
+}
+#journal-ui .j-overview-resources .j-resource {
+  margin: 0;
 }
 #journal-ui .j-idea-bindings {
   font-size: 11px;

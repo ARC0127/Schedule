@@ -16,6 +16,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: python scripts/build.py
+      - run: python scripts/test_native_models.py
       - uses: actions/upload-artifact@v4
         with:
           name: Schedule-windows-x64

@@ -17,8 +17,8 @@ using Windows.UI.Notifications;
 
 [assembly:System.Reflection.AssemblyTitle("Schedule")]
 [assembly:System.Reflection.AssemblyProduct("Schedule")]
-[assembly:System.Reflection.AssemblyVersion("0.0.1.0")]
-[assembly:System.Reflection.AssemblyFileVersion("0.0.1.0")]
+[assembly:System.Reflection.AssemblyVersion("0.0.2.0")]
+[assembly:System.Reflection.AssemblyFileVersion("0.0.2.0")]
 internal static class Program
 {
     internal static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 100 * 1024 * 1024 };

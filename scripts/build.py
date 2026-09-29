@@ -69,13 +69,13 @@ def build(out, cache):
     for p in (ROOT / 'assets').iterdir():
         if p.suffix in {'.png', '.ico'}:
             shutil.copy2(p, out / p.name)
-    for n in ['app.css', 'app.js', 'state.js', 'bridge.js']:
+    for n in ['app.css', 'app.js', 'state.js', 'content.js', 'bridge.js']:
         shutil.copy2(ROOT / 'src/web' / n, out / n)
     shutil.copy2(ROOT / 'third_party/lucide.js', out / 'lucide.js')
     document = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
-<title>Schedule</title><link rel="stylesheet" href="app.css"><script src="lucide.js"></script><script src="state.js"></script></head><body>'''
+<title>Schedule</title><link rel="stylesheet" href="app.css"><script src="lucide.js"></script><script src="state.js"></script><script src="content.js"></script></head><body>'''
     document += (ROOT / 'src/web/app.html').read_text(encoding='utf8')
     document += '<script src="app.js"></script></body></html>'
     (out / 'index.html').write_text(document, encoding='utf8')
