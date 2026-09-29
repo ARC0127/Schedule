@@ -1,5 +1,6 @@
 """Build the portable Windows x64 app without machine-specific tools or paths."""
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -88,6 +89,12 @@ def build(out, cache):
     (out / 'Journal.exe.config').write_text('<configuration><startup><supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.8" /></startup></configuration>', encoding='utf8')
     for n in ['LICENSE', 'THIRD_PARTY_NOTICES.md']:
         shutil.copy2(ROOT / n, out / n)
+    version = json.loads((ROOT / 'package.json').read_text(encoding='utf8'))['version']
+    for n in ['README.md', 'README.en.md', 'assets/schedule-icon.png',
+              'docs/architecture.md', 'docs/images/home.png', f'docs/releases/{version}.md']:
+        destination = out / n
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / n, destination)
     licenses = out / 'licenses'
     licenses.mkdir(exist_ok=True)
     for p in (ROOT / 'third_party').glob('*LICENSE*'):
