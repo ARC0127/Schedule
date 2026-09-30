@@ -4,8 +4,8 @@
 <p align="center">一个轻量的 Windows 本地日历日志。记录想法，关联项目，把资料留在原来的位置。</p>
 <p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
 <p align="center">
-  <a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.4">下载 v0.0.4</a> ·
-  <a href="docs/releases/0.0.4.md">版本说明</a> ·
+  <a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.5">下载 v0.0.5</a> ·
+  <a href="docs/releases/0.0.5.md">版本说明</a> ·
   <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a>
 </p>
 
@@ -28,7 +28,7 @@
 
 ## 下载与开始
 
-1. 在 [v0.0.4 发布页](https://github.com/ARC0127/Schedule/releases/tag/v0.0.4) 下载 **`Schedule-0.0.4-windows-x64.zip`**。
+1. 在 [v0.0.5 发布页](https://github.com/ARC0127/Schedule/releases/tag/v0.0.5) 下载 **`Schedule-0.0.5-windows-x64.zip`**。
 2. 将压缩包完整解压到一个固定、可写的文件夹。
 3. 双击 **`Journal.exe`**，窗口和应用显示名为 **Schedule**。程序无需安装，保留此文件名用于兼容已有快捷方式和通知身份。
 
@@ -80,7 +80,7 @@ py -3 scripts/build.py
 py -3 scripts/package_release.py
 ```
 
-输出为 `dist/Schedule-0.0.4-windows-x64.zip`，包含程序、中英文 README、首页图、许可证及本版发布说明。
+输出为 `dist/Schedule-0.0.5-windows-x64.zip`，包含程序、中英文 README、首页图、许可证及本版发布说明。
 
 开发测试另需 Node.js 与 npm：
 
@@ -94,14 +94,14 @@ npm run test:math
 py -3 scripts/test_native_models.py
 ```
 
-原生测试需要桌面会话和 WebView2，启动前设置独立数据目录。CI 执行状态迁移测试和 Windows 构建。发布流程从 `v0.0.4` 标签构建压缩包，并使用 [保存在仓库中的发布说明](docs/releases/0.0.4.md) 创建 Release。
+原生测试需要桌面会话和 WebView2，启动前设置独立数据目录。CI 执行状态迁移测试和 Windows 构建。发布流程从 `v0.0.5` 标签构建压缩包，并使用 [保存在仓库中的发布说明](docs/releases/0.0.5.md) 创建 Release。
 
 ## 当前边界
 
-`0.0.4` 修复了不同启动环境读取不同数据的问题，界面目前为中文。数据使用单用户 JSON 存储，尚未实现 Markdown 导入导出、SQLite 或正式的 Codex skill/CLI 并发编辑接口。不要让外部工具覆盖运行中的日志文件。Windows 通知设置、免打扰、关机或休眠可能影响提醒投递。
+`0.0.5` 新增离线公式渲染并修复多行想法显示，沿用 0.0.4 的统一数据目录，界面目前为中文。数据使用单用户 JSON 存储，尚未实现 Markdown 导入导出、SQLite 或正式的 Codex skill/CLI 并发编辑接口。不要让外部工具覆盖运行中的日志文件。Windows 通知设置、免打扰、关机或休眠可能影响提醒投递。
 
 ## 开源与制作
 
 由 [**ARCLIGHT**](https://arc0127.github.io/) 制作，使用 [MIT 许可证](LICENSE)。欢迎通过 [Issues](https://github.com/ARC0127/Schedule/issues) 反馈问题。
 
-[架构与数据说明](docs/architecture.md) · [第三方许可](THIRD_PARTY_NOTICES.md) · [v0.0.4 发布说明](docs/releases/0.0.4.md)
+[架构与数据说明](docs/architecture.md) · [第三方许可](THIRD_PARTY_NOTICES.md) · [v0.0.5 发布说明](docs/releases/0.0.5.md)
