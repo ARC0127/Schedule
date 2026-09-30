@@ -88,6 +88,8 @@ async function launch() {
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.waitForURL("https://journal.local/index.html");
   await page.locator("#j-entry-body").waitFor();
+  if (!process.env.SCHEDULE_TEST_BUILD)
+    await page.waitForFunction(() => window.journalReady);
 }
 async function saved() {
   await page.evaluate(() => window.journalFlush());

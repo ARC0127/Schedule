@@ -30,10 +30,8 @@
     if (data.error) item.reject(Error(data.error));
     else item.resolve(data.result);
   });
-  const boot = window.__journalBoot;
-  window.journalNative = { call, schedules: boot.schedules || {} };
+  window.journalNative = { call, schedules: {} };
   window.openai = {
-    widgetState: boot.widgetState,
     setWidgetState: (state) => call("saveState", state),
   };
 })();

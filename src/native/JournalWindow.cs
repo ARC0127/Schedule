@@ -52,9 +52,9 @@ internal class JournalWindow : Form
         Shown += async delegate { if(!initializationStarted){initializationStarted=true;await Init();} };
         FormClosing += delegate(object sender, FormClosingEventArgs e) {
             if (closing) return;
-            if(e.CloseReason==CloseReason.WindowsShutDown||e.CloseReason==CloseReason.TaskManagerClosing){Program.Save();return;}
+            if(e.CloseReason==CloseReason.WindowsShutDown){Program.Save();return;}
+            if(!ready){closing=true;return;}
             e.Cancel=true;
-            if(!ready){initialMode="tray";Hide();return;}
             RequestTransition("tray");
         };
         activationTimer.Tick += delegate {
@@ -93,15 +93,13 @@ internal class JournalWindow : Form
             web.CoreWebView2.Settings.AreDefaultContextMenusEnabled=false;
             web.CoreWebView2.Settings.IsStatusBarEnabled=false;
             web.CoreWebView2.SetVirtualHostNameToFolderMapping("journal.local",Program.AppDir,CoreWebView2HostResourceAccessKind.DenyCors);
-            web.CoreWebView2.NavigationStarting += delegate(object sender,CoreWebView2NavigationStartingEventArgs e) { if(e.Uri!="https://journal.local/index.html")e.Cancel=true; };
+            web.CoreWebView2.NavigationStarting += delegate(object sender,CoreWebView2NavigationStartingEventArgs e) { if(e.Uri!="https://journal.local/index.html")e.Cancel=true;else ready=false; };
             web.CoreWebView2.NewWindowRequested += delegate(object sender,CoreWebView2NewWindowRequestedEventArgs e) {e.Handled=true;};
             web.CoreWebView2.PermissionRequested += delegate(object sender,CoreWebView2PermissionRequestedEventArgs e) {e.State=CoreWebView2PermissionState.Deny;};
             web.CoreWebView2.WebMessageReceived += Message;
-            var boot="window.__journalBoot="+Program.Json.Serialize(new {widgetState=Program.Data.WidgetState,schedules=Program.Data.Schedules})+";";
-            await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(boot+File.ReadAllText(Path.Combine(Program.AppDir,"bridge.js")));
-            web.CoreWebView2.NavigationCompleted += delegate {ready=true;backgroundLaunch=false;tray.Visible=true;RefreshTrayMenu();activationTimer.Start();if(initialMode=="dock"&&Program.ActivationDate==null)ShowDock();else if(initialMode=="tray"&&Program.ActivationDate==null)HideToTray();else OpenActivation();};
+            await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(File.ReadAllText(Path.Combine(Program.AppDir,"bridge.js")));
             web.CoreWebView2.Navigate("https://journal.local/index.html");
-        } catch(Exception e) {MessageBox.Show(e.Message,"桌面界面加载失败",MessageBoxButtons.OK,MessageBoxIcon.Error);closing=true;Close();}
+        } catch(Exception e) {if(closing||IsDisposed)return;MessageBox.Show(e.Message,"桌面界面加载失败",MessageBoxButtons.OK,MessageBoxIcon.Error);closing=true;Close();}
     }
     async void Message(object sender,CoreWebView2WebMessageReceivedEventArgs e)
     {
@@ -111,7 +109,16 @@ internal class JournalWindow : Form
             var req=Program.Json.Deserialize<Dictionary<string,object>>(e.WebMessageAsJson);
             id=Convert.ToString(req["id"]);
             var op=Convert.ToString(req["method"]);object result;
-            if(op=="saveState") {
+            if(op=="loadState") {
+                Program.Load();
+                result=new {widgetState=Program.Data.WidgetState,schedules=Program.Data.Schedules};
+            } else if(op=="uiReady") {
+                ready=true;backgroundLaunch=false;tray.Visible=true;RefreshTrayMenu();activationTimer.Start();
+                if(initialMode=="dock"&&Program.ActivationDate==null)ShowDock();else if(initialMode=="tray"&&Program.ActivationDate==null)HideToTray();else OpenActivation();
+                initialMode="main";
+                result=new {ready=true};
+            } else if(op=="saveState") {
+                if(!ready)throw new InvalidOperationException("日志尚未加载完成，未保存空白界面。");
                 object prior=Program.Data.WidgetState;
                 Program.Data.WidgetState=req["payload"];
                 try {Program.Save();} catch {Program.Data.WidgetState=prior;throw;}

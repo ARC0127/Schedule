@@ -1,5 +1,23 @@
-(() => {
+(async () => {
   const root = document.getElementById("journal-ui");
+  if (window.journalNative) {
+    root.inert = true;
+    const status = document.createElement("div");
+    status.className = "j-load-status";
+    status.setAttribute("role", "status");
+    status.textContent = "正在读取本机记录…";
+    root.before(status);
+    try {
+      const boot = await window.journalNative.call("loadState");
+      window.__journalBoot = boot;
+      window.openai.widgetState = boot.widgetState;
+      window.journalNative.schedules = boot.schedules || {};
+    } catch (error) {
+      status.setAttribute("role", "alert");
+      status.textContent = `记录读取失败，未保存空白界面。${error.message} 请退出后重试。`;
+      return;
+    }
+  }
   const $ = (s) => root.querySelector(s),
     $$ = (s) => Array.from(root.querySelectorAll(s));
   const esc = (s) =>
@@ -2313,6 +2331,10 @@
     $("[data-action=dock]").hidden = false;
   }
   render();
+  if (window.journalNative) await window.journalNative.call("uiReady");
+  window.journalReady = true;
+  document.querySelector(".j-load-status")?.remove();
+  root.inert = false;
   window.addEventListener("openai:set_globals", (e) => {
     if (window.journalNative) return;
     const s = e.detail?.globals?.widgetState;
@@ -2320,4 +2342,14 @@
     restore(s);
     render();
   });
-})();
+})().catch((error) => {
+  const root = document.getElementById("journal-ui");
+  if (!window.journalNative) throw error;
+  root.inert = true;
+  const status =
+    document.querySelector(".j-load-status") || document.createElement("div");
+  status.className = "j-load-status";
+  status.setAttribute("role", "alert");
+  status.textContent = `记录加载未完成，未保存空白界面。${error.message} 请退出后重试。`;
+  if (!status.isConnected) root.before(status);
+});

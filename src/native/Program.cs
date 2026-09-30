@@ -17,8 +17,8 @@ using Windows.UI.Notifications;
 
 [assembly:System.Reflection.AssemblyTitle("Schedule")]
 [assembly:System.Reflection.AssemblyProduct("Schedule")]
-[assembly:System.Reflection.AssemblyVersion("0.0.2.0")]
-[assembly:System.Reflection.AssemblyFileVersion("0.0.2.0")]
+[assembly:System.Reflection.AssemblyVersion("0.0.3.0")]
+[assembly:System.Reflection.AssemblyFileVersion("0.0.3.0")]
 internal static class Program
 {
     internal static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 100 * 1024 * 1024 };
@@ -28,6 +28,8 @@ internal static class Program
     internal static readonly string AppDir = AppDomain.CurrentDomain.BaseDirectory;
     internal static JournalWindow Window;
     internal static string ActivationDate;
+    static string loadedStateText;
+    static string loadedDataText;
     [STAThread]
     static int Main(string[] args)
     {
@@ -68,16 +70,37 @@ internal static class Program
             return 1;
         }
     }
-    static void Load()
+    static string ReadStateText()
     {
-        Data = File.Exists(StateFile) ? Json.Deserialize<Store>(File.ReadAllText(StateFile, Encoding.UTF8)) : new Store();
-        if (Data == null || Data.Schedules == null) throw new InvalidDataException("本地日志格式无法读取，原文件已保留。");
+        try { return File.ReadAllText(StateFile, Encoding.UTF8); }
+        catch (FileNotFoundException) { return null; }
+    }
+    internal static void Load()
+    {
+        var text = ReadStateText();
+        var next = text == null ? new Store() : Json.Deserialize<Store>(text);
+        if (next == null || next.Schedules == null) throw new InvalidDataException("本地日志格式无法读取，原文件已保留。");
+        Data = next;
+        loadedStateText = text;
+        loadedDataText = SerializeStore();
+    }
+    static string SerializeStore()
+    {
+        return Json.Serialize(new { WidgetState=Data.WidgetState,
+            Dock=new { Monitor=Data.Dock.Monitor, Edge=Data.Dock.Edge, Fraction=Data.Dock.Fraction },
+            Schedules=Data.Schedules });
     }
     internal static void Save()
     {
+        if (!String.Equals(ReadStateText(), loadedStateText, StringComparison.Ordinal))
+            throw new IOException("本地日志已发生变化，未覆盖磁盘内容。请先复制未保存的修改，再按 F5 重新读取。");
+        var text = SerializeStore();
+        if (loadedStateText != null && text == loadedDataText) return;
         var tmp = StateFile + ".tmp";
-        File.WriteAllText(tmp, Json.Serialize(Data), new UTF8Encoding(false));
+        File.WriteAllText(tmp, text, new UTF8Encoding(false));
         if (File.Exists(StateFile)) File.Replace(tmp, StateFile, StateFile + ".bak");
         else File.Move(tmp, StateFile);
+        loadedStateText = text;
+        loadedDataText = text;
     }
 }
