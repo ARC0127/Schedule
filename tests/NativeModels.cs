@@ -35,6 +35,10 @@ internal static class NativeModels
         var ideas = (IList)read.Invoke(null, new object[] { state, "2026-01-01" });
         Check(ideas.Count == 1, "Image-only idea missing from dock");
         Check((string)ideas[0].GetType().GetField("Text").GetValue(ideas[0]) == "[图片]", "Dock image placeholder missing");
+        var multiline = "• Diffusion \\(x\\)\n\\qquad\nflow matching\n• Second";
+        var multilineState = json.DeserializeObject(json.Serialize(new {privateContent=new {edits=new Dictionary<string,object>{{"2026-01-01",new {body=multiline,ideas=new[]{new{id="multiline",offset=0,done=true},new{id="next",offset=multiline.IndexOf("• Second"),done=false}}}}}}}));
+        var multilineIdeas = (IList)read.Invoke(null, new object[]{multilineState,"2026-01-01"});
+        Check(multilineIdeas.Count == 2 && ((string)multilineIdeas[0].GetType().GetField("Text").GetValue(multilineIdeas[0])).Contains("flow matching"), "Dock truncated unindented continuation");
         var profile = Environment.GetEnvironmentVariable("SCHEDULE_TEST_DATA");
         Check(!String.IsNullOrEmpty(profile), "Storage tests require an isolated profile");
         var file = Path.Combine(profile, "journal.json");

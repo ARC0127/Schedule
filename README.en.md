@@ -45,12 +45,15 @@ Requires **Windows 10/11 x64**, **.NET Framework 4.8**, and the [Microsoft Edge 
 | Choose projects | Select projects before adding an idea, or edit the current idea's bindings later |
 | Mark complete | Place the caret inside an idea and **tap Ctrl alone**; Ctrl+C/V do not trigger completion |
 | Insert an image | **Ctrl+V** in the editor |
+| Write math | Use `\(...\)`, `\[...\]`, or `$$...$$`; focus the editor to edit TeX and leave it to see rendered equations, also shown in project overviews |
 | Add an event | Use the clock / add-event control beneath the date |
 | Float on the desktop | Use the floating-icon control in the top bar; hover to preview today and click to restore |
 | Tray and exit | Closing the main window sends it to the tray; use Exit in the tray menu to stop the app |
 | Resize the sidebar | Drag the divider between the sidebar and content |
 
 HTTP/HTTPS URLs and Markdown web links are clickable in project overviews. Windows paths in idea text are clickable too; quote paths containing spaces. The daily resources section belongs to the date record and is shared across that day’s project views.
+
+Pasting multiline text or equations keeps them in the current idea, including blank lines. Use Shift+Enter to add the next idea. Math renders offline; saving and copying retain the original TeX source.
 
 ## Your data stays on your computer
 
@@ -87,6 +90,7 @@ npm test
 npm run test:native
 npm run test:overview
 npm run test:restart
+npm run test:math
 py -3 scripts/test_native_models.py
 ```
 

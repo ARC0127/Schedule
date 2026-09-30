@@ -144,7 +144,7 @@ internal sealed class DockWindow : Form
             var p=value as Dictionary<string,object>;if(p==null)continue;
             int offset=Convert.ToInt32(p["offset"]);if(offset<0||offset>=text.Length)continue;
             int end=text.IndexOf('\n',offset);if(end<0)end=text.Length;
-            while(end<text.Length&&text.Substring(end+1).StartsWith("  ")){int next=text.IndexOf('\n',end+1);end=next<0?text.Length:next;}
+            while(end<text.Length){int next=text.IndexOf('\n',end+1);if(next<0)next=text.Length;var following=text.Substring(end+1,next-end-1);if(following=="•"||following.StartsWith("• "))break;end=next;}
             var line=text.Substring(offset,end-offset).TrimStart('•',' ').Trim();
             var plain=String.Concat(line.Select(c=>c>=0xE000&&c<=0xF8FF?"[图片]":c.ToString())).Trim();if(plain.Length==0)continue;
             object done;result.Add(new DockIdea{Id=Convert.ToString(p["id"]),Text=plain.Replace("\n"," "),Done=p.TryGetValue("done",out done)&&Convert.ToBoolean(done)});

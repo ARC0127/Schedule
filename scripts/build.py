@@ -72,10 +72,11 @@ def build(out, cache):
     for n in ['app.css', 'app.js', 'state.js', 'content.js', 'bridge.js']:
         shutil.copy2(ROOT / 'src/web' / n, out / n)
     shutil.copy2(ROOT / 'third_party/lucide.js', out / 'lucide.js')
+    shutil.copytree(ROOT / 'third_party/katex', out / 'katex', dirs_exist_ok=True)
     document = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
-<title>Schedule</title><link rel="stylesheet" href="app.css"><script src="lucide.js"></script><script src="state.js"></script><script src="content.js"></script></head><body>'''
+<title>Schedule</title><link rel="stylesheet" href="katex/katex.min.css"><link rel="stylesheet" href="app.css"><script src="katex/katex.min.js"></script><script src="lucide.js"></script><script src="state.js"></script><script src="content.js"></script></head><body>'''
     document += (ROOT / 'src/web/app.html').read_text(encoding='utf8')
     document += '<script src="app.js"></script></body></html>'
     (out / 'index.html').write_text(document, encoding='utf8')

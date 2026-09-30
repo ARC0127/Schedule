@@ -163,14 +163,16 @@ async function verify() {
         code === 0 ? resolve() : reject(Error("Close button request failed")),
       );
     });
-    for (
-      let i = 0;
-      i < 50 &&
-      JSON.parse(fs.readFileSync(file, "utf8")).WidgetState.privateContent
-        .edits[today].title !== "Close button saves pending edits";
-      i++
-    )
+    for (let i = 0; i < 50; i++) {
+      try {
+        if (JSON.parse(fs.readFileSync(file, "utf8")).WidgetState.privateContent
+          .edits[today].title === "Close button saves pending edits") break;
+      } catch (error) {
+        // Windows can briefly lock the file during the atomic close-time save.
+        if (error.code !== "EBUSY") throw error;
+      }
       await pause(100);
+    }
     assert.equal(
       app.exitCode,
       null,

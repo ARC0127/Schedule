@@ -5,6 +5,7 @@ Schedule source is MIT licensed. Dependencies retain their own terms.
 | Component                           | Version      | License / source                                                                           |
 | ----------------------------------- | ------------ | ------------------------------------------------------------------------------------------ |
 | Lucide                              | 1.17.0       | ISC; some Feather-derived icons under MIT. See `third_party/Lucide-LICENSE.txt`.           |
+| KaTeX                               | 0.18.9       | MIT; offline JS, CSS and fonts from https://registry.npmjs.org/katex/-/katex-0.18.9.tgz. See `third_party/katex/LICENSE`. |
 | Microsoft.Web.WebView2              | 1.0.3650.58  | Microsoft software license; see `third_party/WebView2-LICENSE.txt`.                        |
 | Microsoft.Toolkit.Uwp.Notifications | 7.1.3        | MIT, .NET Foundation and Contributors; see `third_party/Toolkit-LICENSE.txt`.              |
 | System.ValueTuple                   | 4.5.0        | MIT; see `third_party/ValueTuple-LICENSE.txt`.                                             |

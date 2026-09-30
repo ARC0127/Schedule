@@ -9,7 +9,8 @@
     "test:native": "node tests/native.cjs",
     "test:overview": "node tests/overview.cjs",
     "format": "prettier --write src/web tests *.md docs/*.md",
-    "test:restart": "node tests/restart.cjs"
+    "test:restart": "node tests/restart.cjs",
+    "test:math": "node tests/math.cjs"
   },
   "devDependencies": {
     "playwright": "1.58.2",

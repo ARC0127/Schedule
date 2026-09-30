@@ -132,26 +132,7 @@
       done: !!p.done,
       projectIds: [...(p.projectIds || [])],
     }));
-  function ideaRanges(body) {
-    const ideas = [];
-    let offset = 0,
-      active = null;
-    for (const line of String(body || "").split("\n")) {
-      if (/^•(?: |$)/.test(line)) {
-        active = {
-          offset,
-          end: offset + line.length,
-          text: line.slice(1).trimStart(),
-        };
-        ideas.push(active);
-      } else if (/^ {2}/.test(line) && active) {
-        active.text += "\n" + line.slice(2);
-        active.end = offset + line.length;
-      } else active = null;
-      offset += line.length + 1;
-    }
-    return ideas;
-  }
+  const ideaRanges = window.ScheduleContent.ideaRanges;
   function migrateIdeas(r, key) {
     const old = Array.isArray(r.ideas) ? r.ideas : null,
       used = new Set();
@@ -306,24 +287,8 @@
           .includes(state.query.toLowerCase()))
     );
   }
-  function ideaCount(body) {
-    let count = 0,
-      idea = null;
-    const finish = () => {
-      if (idea !== null && idea.trim()) count++;
-      idea = null;
-    };
-    for (const line of String(body || "").split("\n")) {
-      if (/^•(?: |$)/.test(line)) {
-        finish();
-        idea = line.slice(1).trimStart();
-      } else if (/^ {2}/.test(line) && idea !== null) {
-        idea += "\n" + line.slice(2);
-      } else finish();
-    }
-    finish();
-    return count;
-  }
+  const ideaCount = (body) =>
+    ideaRanges(body).filter((p) => p.text.trim()).length;
   const hasContent = (r) =>
     !!r &&
     (!!r.title.trim() || !!r.body.trim() || r.files.length > 0 || !!r.schedule);
@@ -359,6 +324,8 @@
   const imagePattern = /[\uE000-\uF8FF]/g;
   function serializeEditor(node) {
     if (node.nodeType === 3) return node.data.replace(/\r/g, "");
+    if (node.nodeType === 1 && node.dataset.mathSource !== undefined)
+      return node.dataset.mathSource;
     if (node.nodeType === 1 && node.dataset.ideaMarker) return "•";
     if (node.nodeType === 1 && node.dataset.imageToken)
       return node.dataset.imageToken;
@@ -397,51 +364,82 @@
       end: Math.min(size, lastBodySelection.end),
     };
   }
+  function mathMarkup(part) {
+    try {
+      return window.katex.renderToString(part.tex, {
+        displayMode: part.display,
+        throwOnError: true,
+        trust: false,
+        maxExpand: 1000,
+        maxSize: 20,
+      });
+    } catch {
+      return `<span class="j-math-error" title="公式无法解析，已保留原文。点击编辑。">${esc(part.text)}</span>`;
+    }
+  }
   function drawBody(value) {
     const t = bodyField(),
       fragment = document.createDocumentFragment();
     let offset = 0,
       lineStart = true;
-    for (const part of String(value).split(/([\uE000-\uF8FF]|\n)/)) {
-      if (!part) continue;
-      if (part === "\n") {
-        fragment.append(document.createElement("br"));
-        offset++;
-        lineStart = true;
+    const runs =
+      document.activeElement === t
+        ? [{ kind: "text", text: String(value) }]
+        : window.ScheduleContent.mathParts(value);
+    for (const run of runs) {
+      if (run.kind === "math") {
+        const node = document.createElement("span");
+        node.className = `j-math${run.display ? " is-display" : ""}`;
+        node.dataset.mathSource = run.text;
+        node.contentEditable = "false";
+        node.title = "点击编辑公式";
+        node.innerHTML = mathMarkup(run);
+        fragment.append(node);
+        offset += run.text.length;
+        lineStart = false;
         continue;
       }
-      if (/^[\uE000-\uF8FF]$/.test(part)) {
-        const asset = imageAssets.get(part);
-        let node;
-        if (asset?.src) {
-          node = document.createElement("img");
-          node.src = asset.src;
-          node.alt = asset.name || "粘贴的图片";
-          node.draggable = false;
-        } else {
-          node = document.createElement("span");
-          node.className = "j-image-placeholder";
-          node.contentEditable = "false";
-          node.textContent =
-            asset?.status === "loading"
-              ? "正在插入图片…"
-              : asset?.status === "failed"
-                ? "图片读取失败，请重新粘贴"
-                : "图片数据不可用，请重新粘贴";
+      for (const part of run.text.split(/([\uE000-\uF8FF]|\n)/)) {
+        if (!part) continue;
+        if (part === "\n") {
+          fragment.append(document.createElement("br"));
+          offset++;
+          lineStart = true;
+          continue;
         }
-        node.dataset.imageToken = part;
-        fragment.append(node);
-      } else if (lineStart && /^•(?: |$)/.test(part)) {
-        const marker = document.createElement("span");
-        marker.dataset.ideaMarker = "true";
-        marker.dataset.ideaOffset = String(offset);
-        marker.className = "j-completion-marker";
-        marker.contentEditable = "false";
-        marker.textContent = "•";
-        fragment.append(marker, document.createTextNode(part.slice(1)));
-      } else fragment.append(document.createTextNode(part));
-      offset += part.length;
-      lineStart = false;
+        if (/^[\uE000-\uF8FF]$/.test(part)) {
+          const asset = imageAssets.get(part);
+          let node;
+          if (asset?.src) {
+            node = document.createElement("img");
+            node.src = asset.src;
+            node.alt = asset.name || "粘贴的图片";
+            node.draggable = false;
+          } else {
+            node = document.createElement("span");
+            node.className = "j-image-placeholder";
+            node.contentEditable = "false";
+            node.textContent =
+              asset?.status === "loading"
+                ? "正在插入图片…"
+                : asset?.status === "failed"
+                  ? "图片读取失败，请重新粘贴"
+                  : "图片数据不可用，请重新粘贴";
+          }
+          node.dataset.imageToken = part;
+          fragment.append(node);
+        } else if (lineStart && /^•(?: |$)/.test(part)) {
+          const marker = document.createElement("span");
+          marker.dataset.ideaMarker = "true";
+          marker.dataset.ideaOffset = String(offset);
+          marker.className = "j-completion-marker";
+          marker.contentEditable = "false";
+          marker.textContent = "•";
+          fragment.append(marker, document.createTextNode(part.slice(1)));
+        } else fragment.append(document.createTextNode(part));
+        offset += part.length;
+        lineStart = false;
+      }
     }
     if (value.endsWith("\n")) {
       const end = document.createElement("br");
@@ -519,6 +517,26 @@
     },
   });
   bodyField().setSelectionRange = setBodySelection;
+  bodyField().addEventListener("focus", () => {
+    if (!bodyField().querySelector("[data-math-source]")) return;
+    const selection = editorSelection();
+    drawBody(bodyField().value);
+    setBodySelection(selection.start, selection.end);
+  });
+  bodyField().addEventListener("blur", () => {
+    if (!composing) drawBody(bodyField().value);
+  });
+  bodyField().addEventListener("pointerdown", (e) => {
+    const formula = e.target.closest("[data-math-source]");
+    if (!formula || e.button !== 0 || e.ctrlKey) return;
+    e.preventDefault();
+    const range = document.createRange();
+    range.selectNodeContents(bodyField());
+    range.setEndBefore(formula);
+    const start = serializeEditor(range.cloneContents()).length;
+    bodyField().focus({ preventScroll: true });
+    setBodySelection(start, start + formula.dataset.mathSource.length);
+  });
   document.addEventListener("selectionchange", () => {
     if (document.activeElement === bodyField()) {
       editorSelection();
@@ -745,7 +763,7 @@
     const marker = e.target.closest("[data-idea-marker]");
     let offset = marker ? Number(marker.dataset.ideaOffset) : null;
     if (offset === null) {
-      const caret = document.caretRangeFromIdea(e.clientX, e.clientY);
+      const caret = document.caretRangeFromPoint(e.clientX, e.clientY);
       if (!caret || !bodyField().contains(caret.startContainer)) return;
       const range = document.createRange();
       range.selectNodeContents(bodyField());
@@ -822,20 +840,9 @@
     let end = value.indexOf("\n", pos);
     if (end < 0) end = value.length;
     const line = value.slice(start, end);
-    let ideaStart = /^•(?: |$)/.test(line) ? start : -1;
-    if (ideaStart < 0 && /^ {2}/.test(line)) {
-      let s = start;
-      while (s > 0) {
-        const e = s - 1;
-        s = value.lastIndexOf("\n", e - 1) + 1;
-        const prev = value.slice(s, e);
-        if (/^•(?: |$)/.test(prev)) {
-          ideaStart = s;
-          break;
-        }
-        if (!/^ {2}/.test(prev)) break;
-      }
-    }
+    const ideaStart =
+      ideaRanges(value).find((p) => pos >= p.offset && pos <= p.end)?.offset ??
+      -1;
     return { start, end, line, ideaStart };
   }
   function updateIdeaUI() {
@@ -1001,6 +1008,8 @@
     const open = `data-open-idea="${esc(idea.id)}" data-idea-day="${date}"`;
     return window.ScheduleContent.parts(idea.text)
       .map((part) => {
+        if (part.kind === "math")
+          return `<button type="button" class="j-idea-open j-math${part.display ? " is-display" : ""}" ${open} title="编辑公式">${mathMarkup(part)}</button>`;
         if (part.kind === "image") {
           const asset = imageAssets.get(part.token);
           if (
@@ -1020,7 +1029,14 @@
           return `<a class="j-idea-link" href="${esc(part.url)}" data-external-url="${esc(part.url)}" target="_blank" rel="noopener noreferrer">${esc(part.text)}</a>`;
         if (part.kind === "path")
           return `<button type="button" class="j-idea-link" data-inline-path="${esc(part.text)}" title="打开本地路径">${esc(part.text)}</button>`;
-        return `<button type="button" class="j-idea-open" ${open}>${esc(part.text)}</button>`;
+        return part.text
+          .split("\n")
+          .map((line) =>
+            line
+              ? `<button type="button" class="j-idea-open" ${open}>${esc(line)}</button>`
+              : "",
+          )
+          .join("<br>");
       })
       .join("");
   }
