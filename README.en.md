@@ -4,8 +4,8 @@
 <p align="center">A lightweight Windows calendar journal. Capture ideas, connect projects, and keep your files where they belong.</p>
 <p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
 <p align="center">
-  <a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.3">Download v0.0.3</a> ·
-  <a href="docs/releases/0.0.3.md">Release notes</a> ·
+  <a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.4">Download v0.0.4</a> ·
+  <a href="docs/releases/0.0.4.md">Release notes</a> ·
   <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a>
 </p>
 
@@ -28,7 +28,7 @@
 
 ## Download and start
 
-1. Download **`Schedule-0.0.3-windows-x64.zip`** from the [v0.0.3 release](https://github.com/ARC0127/Schedule/releases/tag/v0.0.3).
+1. Download **`Schedule-0.0.4-windows-x64.zip`** from the [v0.0.4 release](https://github.com/ARC0127/Schedule/releases/tag/v0.0.4).
 2. Extract the entire archive into a fixed, writable folder.
 3. Double-click **`Journal.exe`**. Its display name is **Schedule**. No installer is needed; the executable name is retained for existing shortcut and notification compatibility.
 
@@ -54,9 +54,11 @@ HTTP/HTTPS URLs and Markdown web links are clickable in project overviews. Windo
 
 ## Your data stays on your computer
 
-Data is stored in `%LOCALAPPDATA%\CodexJournal\journal.json`, including journal text, ideas, project bindings, images, events, and floating-window position. Linked files remain at their original paths. Saves use a temporary file and atomic replacement; `.bak` holds the preceding version.
+Data is stored in `%USERPROFILE%\.schedule\journal.json`, including journal text, ideas, project bindings, images, events, and floating-window position. Linked files remain at their original paths. Saves use a temporary file and atomic replacement; `.bak` holds the preceding version.
 
-**Back up:** Exit from the tray, then copy the entire `%LOCALAPPDATA%\CodexJournal` folder.
+On first upgrade, legacy AppData and MSIX package-cache journals are backed up under `legacy-backups` before importing the populated copy. Different populated histories produce a visible conflict instead of an overwrite. Original files remain untouched; an existing new journal is never reimported. The new location avoids AppData redirection splitting desktop and Codex launches.
+
+**Back up:** Exit from the tray, then copy the entire `%USERPROFILE%\.schedule` folder.
 
 **Upgrade:** Exit and back up first, then extract the new package over the existing program folder. Keeping the executable location and data folder preserves existing shortcuts and Windows notification identity. Legacy `points` / `newPointProjects` fields migrate to `ideas` / `newIdeaProjects`, retaining IDs, text, project bindings, and completion state.
 
@@ -75,7 +77,7 @@ The first build downloads pinned NuGet dependencies and uses the .NET Framework 
 py -3 scripts/package_release.py
 ```
 
-The output is `dist/Schedule-0.0.3-windows-x64.zip`. It includes the app, both READMEs, the home screenshot, licenses, and the notes for this release.
+The output is `dist/Schedule-0.0.4-windows-x64.zip`. It includes the app, both READMEs, the home screenshot, licenses, and the notes for this release.
 
 Development tests also require Node.js and npm:
 
@@ -88,16 +90,16 @@ npm run test:restart
 py -3 scripts/test_native_models.py
 ```
 
-Native tests require a desktop session and WebView2, and set an isolated data directory before process startup. CI runs state migration tests and a Windows build. The release workflow builds from the `v0.0.3` tag and publishes using the [versioned release notes](docs/releases/0.0.3.md).
+Native tests require a desktop session and WebView2, and set an isolated data directory before process startup. CI runs state migration tests and a Windows build. The release workflow builds from the `v0.0.4` tag and publishes using the [versioned release notes](docs/releases/0.0.4.md).
 
 Each document load reads the current file before enabling editing. Failed reads block editing, stale saves reject external file changes, and unchanged saves preserve the previous backup.
 
 ## Current scope
 
-`0.0.3` fixes document reloads and journal persistence. The app interface is currently Chinese. Storage is single-user JSON; Markdown import/export, SQLite, and a formal Codex skill/CLI interface for concurrent editing are not implemented yet. External tools should not overwrite the journal while the app is running. Windows notification settings, Do Not Disturb, shutdown, and sleep can affect reminder delivery.
+`0.0.4` fixes data splitting between desktop and MSIX-hosted launches. The app interface is currently Chinese. Storage is single-user JSON; Markdown import/export, SQLite, and a formal Codex skill/CLI interface for concurrent editing are not implemented yet. External tools should not overwrite the journal while the app is running. Windows notification settings, Do Not Disturb, shutdown, and sleep can affect reminder delivery.
 
 ## Creator and license
 
 Made by [**ARCLIGHT**](https://arc0127.github.io/) and released under the [MIT License](LICENSE). Report problems through [Issues](https://github.com/ARC0127/Schedule/issues).
 
-[Architecture and data model (Chinese)](docs/architecture.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [v0.0.3 release notes](docs/releases/0.0.3.md)
+[Architecture and data model (Chinese)](docs/architecture.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [v0.0.4 release notes](docs/releases/0.0.4.md)

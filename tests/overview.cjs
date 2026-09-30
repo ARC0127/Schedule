@@ -13,6 +13,7 @@ assert.notEqual(
   profile,
   path.join(process.env.LOCALAPPDATA || "", "CodexJournal"),
 );
+assert.notEqual(profile, path.join(os.homedir(), ".schedule"));
 const today = new Date().toLocaleDateString("sv-SE"),
   older = "2025-01-02";
 const todayFile = path.join(profile, "current.txt"),

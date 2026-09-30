@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using System.IO;
 using System.Web.Script.Serialization;
@@ -53,7 +54,51 @@ internal static class NativeModels
         Check(conflict && File.ReadAllText(file) == changed, "Stale state overwrote recovered disk data");
         load.Invoke(null, null); save.Invoke(null, null);
         Check(File.ReadAllText(file).Contains("Recovered"), "Reload did not retain recovered project");
-        Console.WriteLine("Native models passed: URL validation, image-only dock, stale-write protection, reload and backup retention.");
+        var storage = assembly.GetType("StoragePaths");
+        var defaultDir = (string)storage.GetProperty("DefaultDirectory", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null, null);
+        Check(defaultDir == Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".schedule"), "Default data must be outside redirected AppData");
+        var discover = storage.GetMethod("LegacyFiles", BindingFlags.Static | BindingFlags.NonPublic);
+        var migrate = storage.GetMethod("MigrateLegacy", BindingFlags.Static | BindingFlags.NonPublic);
+        var legacy = Path.Combine(profile, "legacy");
+        var plain = Path.Combine(legacy, "CodexJournal", "journal.json");
+        var redirected = Path.Combine(legacy, "Packages", "Example.Host_abc", "LocalCache", "Local", "CodexJournal", "journal.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(plain));
+        Directory.CreateDirectory(Path.GetDirectoryName(redirected));
+        var empty = "{\"WidgetState\":{\"privateContent\":{\"projects\":[],\"edits\":{}}},\"Schedules\":{}}";
+        File.WriteAllText(plain, empty);
+        // Migration copies the complete envelope, including inline images and unknown fields.
+        var populated = changed.Replace("\"WidgetState\":{", "\"WidgetState\":{\"nativeImages\":[[\"token\",{\"src\":\"data:image/png;base64,AA==\"}]],");
+        File.WriteAllText(redirected, populated);
+        File.WriteAllText(redirected + ".bak", "older backup");
+        var destination = Path.Combine(profile, "canonical");
+        var candidates = discover.Invoke(null, new object[] { legacy });
+        migrate.Invoke(null, new object[] { destination, candidates });
+        var migrated = Path.Combine(destination, "journal.json");
+        Check(File.ReadAllText(migrated) == populated, "Empty desktop state replaced populated MSIX state");
+        Check(File.ReadAllText(plain) == empty && File.ReadAllText(redirected) == populated, "Migration modified source files");
+        Check(Directory.GetFiles(Path.Combine(destination, "legacy-backups"), "*.json", SearchOption.AllDirectories).Length == 2, "Both legacy stores must be backed up");
+        Check(Directory.GetFiles(Path.Combine(destination, "legacy-backups"), "*.bak", SearchOption.AllDirectories).Length == 1, "Legacy backup must be retained");
+        File.WriteAllText(migrated, empty);
+        migrate.Invoke(null, new object[] { destination, candidates });
+        Check(File.ReadAllText(migrated) == empty, "Second startup resurrected old data");
+        var conflictDestination = Path.Combine(profile, "conflicting");
+        File.WriteAllText(plain, populated.Replace("Recovered", "Different"));
+        bool migrationConflict = false;
+        try { migrate.Invoke(null, new object[] { conflictDestination, candidates }); }
+        catch (TargetInvocationException e) { migrationConflict = e.InnerException is IOException; }
+        Check(migrationConflict && !File.Exists(Path.Combine(conflictDestination, "journal.json")), "Different populated histories must not be silently overwritten");
+        File.WriteAllText(plain, populated);
+        var identicalDestination = Path.Combine(profile, "identical");
+        migrate.Invoke(null, new object[] { identicalDestination, candidates });
+        Check(File.ReadAllText(Path.Combine(identicalDestination, "journal.json")) == populated, "Identical legacy views should migrate once");
+        File.WriteAllText(plain, "{broken");
+        var invalidDestination = Path.Combine(profile, "invalid");
+        bool invalid = false;
+        try { migrate.Invoke(null, new object[] { invalidDestination, candidates }); }
+        catch (TargetInvocationException) { invalid = true; }
+        Check(invalid && !File.Exists(Path.Combine(invalidDestination, "journal.json")), "Corrupt source was silently discarded");
+        Check(Directory.GetFiles(Path.Combine(invalidDestination, "legacy-backups"), "*.json", SearchOption.AllDirectories).Length == 2, "Corrupt migration did not preserve originals");
+        Console.WriteLine("Native models passed: URL/dock, stale-write/reload/backup, shared storage path, MSIX discovery, complete migration, idempotence, conflicts and corrupt-source preservation.");
         return 0;
     }
 }

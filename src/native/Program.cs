@@ -17,12 +17,12 @@ using Windows.UI.Notifications;
 
 [assembly:System.Reflection.AssemblyTitle("Schedule")]
 [assembly:System.Reflection.AssemblyProduct("Schedule")]
-[assembly:System.Reflection.AssemblyVersion("0.0.3.0")]
-[assembly:System.Reflection.AssemblyFileVersion("0.0.3.0")]
+[assembly:System.Reflection.AssemblyVersion("0.0.4.0")]
+[assembly:System.Reflection.AssemblyFileVersion("0.0.4.0")]
 internal static class Program
 {
     internal static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 100 * 1024 * 1024 };
-    internal static readonly string DataDir = Environment.GetEnvironmentVariable("SCHEDULE_TEST_DATA") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexJournal");
+    internal static readonly string DataDir = Environment.GetEnvironmentVariable("SCHEDULE_TEST_DATA") ?? StoragePaths.DefaultDirectory;
     internal static readonly string StateFile = Path.Combine(DataDir, "journal.json");
     internal static Store Data;
     internal static readonly string AppDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -54,6 +54,8 @@ internal static class Program
                     return 0;
                 }
                 if(args.Contains("--exit"))return 0;
+                if(Environment.GetEnvironmentVariable("SCHEDULE_TEST_DATA")==null)
+                    StoragePaths.MigrateLegacy(DataDir, StoragePaths.LegacyFiles(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)));
                 Load();
                 if(Environment.GetEnvironmentVariable("SCHEDULE_TEST_DATA")==null)
                     foreach (var pair in Data.Schedules.ToArray()) WindowsReminders.Reconcile(pair.Key, pair.Value);

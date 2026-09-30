@@ -5,6 +5,7 @@ Schedule 使用 .NET Framework 4.8 + WinForms + WebView2。业务界面为原生
 ```text
 src/native/
   Program.cs              进程入口、单实例、数据读写
+  StoragePaths.cs         统一用户目录、旧 AppData / MSIX 日志迁移
   Models.cs               日程与存储信封
   JournalWindow.cs        WebView2 消息桥、主窗口与托盘生命周期
   WindowsReminders.cs     Windows 提醒注册、取消及诊断
@@ -51,3 +52,9 @@ tests/                    合成数据迁移和原生行为测试
 原生桥接只注册消息接口，不嵌入一次性的启动数据快照。每个文档通过 `loadState` 重新读盘，再通过 `uiReady` 通知宿主可以编辑、恢复窗口和处理退出。读取失败时界面显示错误且保持不可编辑，宿主拒绝加载完成前的 `saveState`。
 
 `Program.Load` 记录实际读入的文件文本。`Save` 在写入前比较当前磁盘内容，发现外部变化则显式拒绝覆盖；这不是外部并发写入的事务接口。相同内容不重复写盘或轮换备份。`tests/restart.cjs` 验证文档重载、关闭到托盘、第二次启动激活、完全退出重开和失败恢复。
+
+## 启动环境与数据位置
+
+默认目录为 `%USERPROFILE%\.schedule`，独立测试仍使用 `SCHEDULE_TEST_DATA`。不要改回 AppData：MSIX 宿主（包括 Codex）的子进程会继承文件重定向，字面相同的路径可能对应不同文件。定位此类问题必须通过文件句柄的 `GetFinalPathNameByHandle` 对比实际路径，且测试必须覆盖资源管理器启动。参见 [Microsoft 的 AppData 重定向说明](https://learn.microsoft.com/en-us/windows/msix/desktop/flexible-virtualization)。
+
+`StoragePaths` 仅在新日志不存在时检查旧 AppData 和 `Packages/*/LocalCache/Local/CodexJournal`。迁移先保留来源及 `.bak`，选择唯一有内容的文本副本；多个不同的有效副本或不可读数据使启动显式失败，不猜测哪份较新。新目录存在后不再导入，避免复活已删除记录。图片内嵌在 JSON，迁移保留整个信封。WebView2 缓存无需迁移。

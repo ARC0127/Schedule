@@ -12,6 +12,7 @@ assert.notEqual(
   profile,
   path.join(process.env.LOCALAPPDATA || "", "CodexJournal"),
 );
+assert.notEqual(profile, path.join(os.homedir(), ".schedule"));
 const today = new Date().toLocaleDateString("sv-SE"),
   body = "• First idea\n  continuation\n• Second idea";
 const ideas = [
