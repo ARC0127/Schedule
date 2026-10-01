@@ -61,7 +61,8 @@ Requires **Windows 10/11 x64**, **.NET Framework 4.8**, and the [Microsoft Edge 
 | Expand a day | Double-click a date to use both the calendar and editor area; use the back arrow or Esc to return. Single-click still selects the day |
 | View important days | Open Important in the sidebar to list starred dates across all months. Click a row to expand that day; the back arrow or Esc returns to the list |
 | Add an idea | **Shift+Enter**; **Enter** only adds a line |
-| Choose projects | Select projects before adding an idea, or edit the current idea's bindings later |
+| Choose projects | With the caret inside an idea, the top project picker immediately adds or removes its project bindings. Outside an idea, it sets the defaults for future ideas |
+| Project counts and order | Parentheses show each project's total ideas. Projects sort by unfinished idea count, keeping their original order on ties. Ordinary notes count as unfinished ideas without becoming todos |
 | Mark complete | Place the caret inside an idea and **tap Ctrl alone** to complete it; tap again to return it to Todo. Ordinary notes can also be completed directly; Ctrl+C/V do not trigger completion |
 | Insert an image | **Ctrl+V** in the editor |
 | Format text | Select text to reveal formatting, or use the type icon to open it for future typing. Supports size, bold, italic, underline, color and clear formatting; **Ctrl+B / I / U** toggle bold / italic / underline |

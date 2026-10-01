@@ -19,7 +19,8 @@
     "test:usability": "node tests/usability.cjs",
     "test:editor-links-dpi": "node tests/editor-links-dpi.cjs",
     "test:math-svg": "node tests/math-svg.cjs",
-    "test:tasks": "node tests/task-workflow.cjs"
+    "test:tasks": "node tests/task-workflow.cjs",
+    "test:project-bindings": "node tests/project-bindings.cjs"
   },
   "devDependencies": {
     "playwright": "1.58.2",

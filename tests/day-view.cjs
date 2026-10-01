@@ -180,7 +180,10 @@ async function width(selector) {
     await page.evaluate(() => window.journalFlush());
     let saved = JSON.parse(fs.readFileSync(file, "utf8"));
     assert.equal(saved.WidgetState.privateContent.edits[day].body, changed);
-    assert.deepEqual(saved.WidgetState.privateContent.edits[day].ideas, ideas);
+    assert.deepEqual(
+      saved.WidgetState.privateContent.edits[day].ideas,
+      ideas.map(idea => idea.done ? {...idea, todo: true} : idea),
+    );
     await dateButton(other).click();
     await dateButton(day).dblclick();
     assert.equal(await value(), changed);

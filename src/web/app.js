@@ -379,6 +379,9 @@
     // Keep the editor selection and prevent formula blur rendering from moving the clicked control.
     if (e.target.closest("button")) e.preventDefault();
   });
+  $("#j-entry-project").addEventListener("pointerdown", e => {
+    if (e.button === 0) e.preventDefault();
+  });
   $(".j-format-tools").addEventListener("click", e => {
     const b = e.target.closest("[data-format]");
     if (!b) return;
@@ -429,7 +432,9 @@
   function editorSelection() {
     const t = bodyField(),
       s = window.getSelection();
-    if (s?.rangeCount && t.contains(s.anchorNode) && t.contains(s.focusNode)) {
+    // Blur redraws math/link previews and can collapse the DOM selection. Keep
+    // the last writing position while project checkboxes or other tools have focus.
+    if (document.activeElement === t && s?.rangeCount && t.contains(s.anchorNode) && t.contains(s.focusNode)) {
       const r = s.getRangeAt(0),
         a = document.createRange(),
         b = document.createRange();
@@ -1004,6 +1009,14 @@
       : "Ctrl + V 粘贴文字或图片";
     const p = ideaAtCaret(),
       hint = $("#j-project-link-hint");
+    updateProjectButton();
+    if (!$("#j-project-picker").hidden && document.activeElement === bodyField()) {
+      const nextTarget = p ? {date: state.selected, id: p.id} : null;
+      if (pickerTarget?.date !== nextTarget?.date || pickerTarget?.id !== nextTarget?.id) {
+        pickerTarget = nextTarget;
+        renderBindingOptions();
+      }
+    }
     $("#j-idea-settings").hidden = !p;
     $("#j-idea-settings span").textContent = p?.important || p?.dueDate ? `${p.important ? "★ " : ""}${p.dueDate || "重要"}` : "待办、重要与截止日期";
     $("#j-idea-menu-toggle").hidden = !p;
@@ -1441,21 +1454,41 @@
     );
   }
   function renderProjects() {
-    $("#j-project-nav").innerHTML = projects
+    const counts = new Map(projects.map(p => [p.id, {total: 0, pending: 0}]));
+    for (const record of Object.values(records)) {
+      for (const idea of visibleIdeas(record)) {
+        for (const id of new Set(idea.projectIds)) {
+          const count = counts.get(id);
+          if (count) { count.total++; if (!idea.done) count.pending++; }
+        }
+      }
+    }
+    $("#j-project-nav").innerHTML = [...projects]
+      .sort((a, b) => counts.get(b.id).pending - counts.get(a.id).pending)
       .map(
         (p) =>
-          `<button type="button" class="j-nav j-project ${state.filter === p.id ? "is-active" : ""}" data-filter="${esc(p.id)}"><span class="j-project-dot"></span><span>${esc(p.name)}</span></button>`,
+          `<button type="button" class="j-nav j-project ${state.filter === p.id ? "is-active" : ""}" data-filter="${esc(p.id)}" title="${esc(p.name)} · ${counts.get(p.id).total} 个想法，${counts.get(p.id).pending} 个未完成"><span class="j-project-dot"></span><span>${esc(p.name)} <small class="j-project-count">(${counts.get(p.id).total})</small></span></button>`,
       )
       .join("");
     $(".j-unbound-count").textContent = projectIdeaRows("unbound").length;
-    const ids = selectedBindingIds();
+    updateProjectButton();
+    renderBindingOptions();
+    $("#j-project-context").hidden = true;
+    renderIdeaOverview();
+    icons();
+  }
+  function updateProjectButton() {
+    const idea = ideaAtCaret();
     $("#j-entry-project").textContent =
-      "新想法：" +
-      (newIdeaProjects
+      (idea ? "当前想法：" : "新想法：") +
+      ((idea?.projectIds || newIdeaProjects)
         .map((id) => projectById(id)?.name)
         .filter(Boolean)
         .join("、") || "未绑定") +
       " ▾";
+  }
+  function renderBindingOptions() {
+    const ids = selectedBindingIds();
     $("#j-picker-title").textContent = pickerTarget
       ? "这个想法的项目"
       : "新想法的项目";
@@ -1465,9 +1498,6 @@
           `<label class="j-project-choice"><input type="checkbox" data-link-project="${esc(p.id)}" ${ids.includes(p.id) ? "checked" : ""}><span>${esc(p.name)}<small>${esc(p.root || "暂未关联文件夹")}</small></span></label>`,
       )
       .join("");
-    $("#j-project-context").hidden = true;
-    renderIdeaOverview();
-    icons();
   }
   function setBindingIds(ids) {
     ids = [...new Set(ids)].filter((id) => projectById(id));
@@ -2727,10 +2757,13 @@
       return;
     }
     if (action === "choose-project") {
-      if (!$("#j-project-picker").hidden && !pickerTarget) {
+      if (!$("#j-project-picker").hidden) {
         $("#j-project-picker").hidden = true;
         $("#j-entry-project").setAttribute("aria-expanded", "false");
-      } else openBindingPicker();
+      } else {
+        const idea = ideaAtCaret();
+        openBindingPicker(idea ? {date: state.selected, id: idea.id} : null);
+      }
       return;
     }
     if (action === "unbind-projects") {

@@ -1658,6 +1658,11 @@
 #journal-ui .j-project-dot {
   flex-shrink: 0;
 }
+#journal-ui .j-project-count {
+  color: #899385;
+  font-size: 11px;
+  white-space: nowrap;
+}
 #journal-ui .j-profile > div {
   min-width: 0;
 }
