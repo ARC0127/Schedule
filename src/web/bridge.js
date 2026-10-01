@@ -4,7 +4,7 @@
   const call = (method, payload = null, files = null) =>
     new Promise((resolve, reject) => {
       const id = String(++serial);
-      const timer = setTimeout(() => {
+      const timer = ["exportData", "importBackup", "importMarkdown"].includes(method) ? null : setTimeout(() => {
         pending.delete(id);
         reject(Error("Windows 未及时响应，请检查路径或稍后重试。"));
       }, 15000);

@@ -27,7 +27,7 @@ test("legacy fields migrate without losing identity, content, completion or bind
   const before = JSON.stringify(old),
     next = upgrade(old);
   assert.equal(JSON.stringify(old), before);
-  assert.deepEqual(next.privateContent.edits["2026-01-02"].ideas, [idea]);
+  assert.deepEqual(next.privateContent.edits["2026-01-02"].ideas, [{...idea,todo:true}]);
   assert.equal(
     next.privateContent.edits["2026-01-02"].body,
     old.privateContent.edits["2026-01-02"].body,

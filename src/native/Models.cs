@@ -17,6 +17,11 @@ using Windows.UI.Notifications;
 
 public class Schedule
 {
+    public string Id {get;set;}
+    public string Date {get;set;}
+    public bool Done {get;set;}
+    public string IdeaDate {get;set;}
+    public string IdeaId {get;set;}
     public string Title {get;set;}
     public string Time {get;set;}
     public string At {get;set;}

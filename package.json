@@ -1,6 +1,6 @@
 {
   "name": "schedule-desktop",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "private": true,
   "license": "MIT",
   "author": "ARCLIGHT <https://arc0127.github.io/>",
@@ -11,7 +11,15 @@
     "format": "prettier --write src/web tests *.md docs/*.md",
     "test:restart": "node tests/restart.cjs",
     "test:math": "node tests/math.cjs",
-    "test:calendar": "node tests/calendar.cjs"
+    "test:calendar": "node tests/calendar.cjs",
+    "test:day-view": "node tests/day-view.cjs",
+    "test:important": "node tests/important.cjs",
+    "test:core": "node tests/core-features.cjs",
+    "test:cli": "node tests/cli-startup.cjs",
+    "test:usability": "node tests/usability.cjs",
+    "test:editor-links-dpi": "node tests/editor-links-dpi.cjs",
+    "test:math-svg": "node tests/math-svg.cjs",
+    "test:tasks": "node tests/task-workflow.cjs"
   },
   "devDependencies": {
     "playwright": "1.58.2",

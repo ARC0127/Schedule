@@ -126,10 +126,13 @@
       n.toString(16),
     ).join("-");
   const copyIdeas = (ideas) =>
-    (ideas || []).map((p) => ({
+    (ideas || []).map((p) => window.ScheduleState.normalizeIdea({
       id: p.id,
       offset: p.offset,
       done: !!p.done,
+      ...(p.todo !== undefined ? {todo: !!p.todo} : {}),
+      ...(p.important !== undefined ? {important: !!p.important} : {}),
+      ...(p.dueDate !== undefined ? {dueDate: p.dueDate || ""} : {}),
       projectIds: [...(p.projectIds || [])],
     }));
   const ideaRanges = window.ScheduleContent.ideaRanges;
@@ -143,10 +146,13 @@
       );
       const id = saved?.id || `${key}-idea-${i}`;
       used.add(id);
-      return {
+      return window.ScheduleState.normalizeIdea({
         id,
         offset: p.offset,
         done: !!saved?.done,
+        ...(saved?.todo !== undefined ? {todo: !!saved.todo} : {}),
+        ...(saved?.important !== undefined ? {important: !!saved.important} : {}),
+        ...(saved?.dueDate !== undefined ? {dueDate: saved.dueDate || ""} : {}),
         projectIds: [
           ...new Set(
             (saved?.projectIds || (old ? [] : legacyProjectIds(r))).filter(
@@ -154,7 +160,7 @@
             ),
           ),
         ],
-      };
+      });
     });
   }
   function reconcileIdeas(record, body, edit) {
@@ -252,6 +258,9 @@
     edits: {},
     sidebar: null,
     sidebarWidth: 200,
+    navigation: {},
+    dayExpanded: false,
+    sidebarScroll: 0,
   };
   let composing = false,
     saveTimer,
@@ -264,6 +273,8 @@
     `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   const parse = (k) => k.split("-").map(Number);
   const current = () => records[state.selected] || empty();
+  const eventsFor = (r) => r?.appointments || (r?.appointment ? [r.appointment] : []);
+  const isImportant = (r) => !!r && (!!r.important || eventsFor(r).some(s => s.important) || (r.ideas || []).some(p => p.important));
   const icons = () => {
     $$("button").forEach((b) => b.classList.add("cursor-interaction"));
     if (globalThis.lucide)
@@ -273,9 +284,9 @@
     return (
       !!r &&
       (state.filter === "all" ||
-        (state.filter === "important" && r.important) ||
+        (state.filter === "important" && isImportant(r)) ||
         entryProjectIds(r).includes(state.filter)) &&
-      (!state.query ||
+      (state.filter !== "search" || !state.query ||
         [
           r.title,
           r.body,
@@ -311,6 +322,77 @@
       ? 0
       : Math.min(5, Math.ceil((5 * score(r)) / max));
   const bodyField = () => $("#j-entry-body");
+  const textFormats = window.ScheduleFormatting;
+  let typingFormat = null, typingPosition = null, toolbarSelection = null, formatOpen = false;
+  function resetTypingFormat() {
+    typingFormat = null;
+    typingPosition = null;
+    toolbarSelection = null;
+  }
+  function selectionStyle() {
+    const { start, end } = editorSelection(), runs = current().formats || [];
+    if (start === end) return typingFormat ?? textFormats.at(runs, start, true);
+    const styles = textFormats.segments(bodyField().value.slice(start, end), runs, start).map(p => p.style);
+    const value = {};
+    for (const name of ["bold", "italic", "underline", "size", "color"])
+      if (styles.length && styles.every(s => s[name] === styles[0][name])) value[name] = styles[0][name];
+    return textFormats.style(value);
+  }
+  function updateFormatToolbar() {
+    const selection = editorSelection();
+    if (!composing && typingPosition && (typingPosition.date !== state.selected ||
+        selection.start !== typingPosition.at || selection.start !== selection.end)) resetTypingFormat();
+    const value = selectionStyle();
+    const show = formatOpen || (selection.start !== selection.end && (document.activeElement === bodyField() || $(".j-format-tools").contains(document.activeElement)));
+    $(".j-format-tools").hidden = !show;
+    $('[data-action="toggle-format"]').setAttribute("aria-expanded", String(show));
+    $$("[data-format]").forEach(b => {
+      if (b.dataset.format !== "clear") b.setAttribute("aria-pressed", String(!!value[b.dataset.format]));
+    });
+    $("#j-font-size").value = value.size || "";
+    $("#j-text-color").value = value.color || "";
+  }
+  function applyTextFormat(patch) {
+    if (composing) return;
+    const t = bodyField(), selection = toolbarSelection || editorSelection();
+    toolbarSelection = null;
+    historyFor().lastType = "";
+    t.focus({ preventScroll: true });
+    setBodySelection(selection.start, selection.end);
+    if (selection.start === selection.end) {
+      typingFormat = patch === null ? {} : textFormats.style({ ...selectionStyle(), ...patch });
+      typingPosition = { date: state.selected, at: selection.start };
+    } else {
+      const h = historyFor();
+      h.undo.push(bodySnapshot()); h.redo = []; h.lastType = "";
+      resetTypingFormat();
+      changeRecord({ formats: textFormats.apply(current().formats, t.value.length, selection.start, selection.end, patch) });
+    }
+    beforeEdit = null;
+    updateFormatToolbar();
+  }
+  $(".j-format-tools").addEventListener("pointerdown", e => {
+    toolbarSelection = editorSelection();
+    if (e.target.closest("button")) e.preventDefault();
+  });
+  for (const tools of $$(".j-writing-tools, .j-idea-menu")) tools.addEventListener("pointerdown", e => {
+    // Keep the editor selection and prevent formula blur rendering from moving the clicked control.
+    if (e.target.closest("button")) e.preventDefault();
+  });
+  $(".j-format-tools").addEventListener("click", e => {
+    const b = e.target.closest("[data-format]");
+    if (!b) return;
+    const name = b.dataset.format;
+    applyTextFormat(name === "clear" ? null : { [name]: !selectionStyle()[name] });
+  });
+  $("#j-font-size").addEventListener("change", e => applyTextFormat({ size: Number(e.target.value) || null }));
+  $("#j-text-color").addEventListener("change", e => applyTextFormat({ color: e.target.value || null }));
+  function formattedText(text, runs, offset = 0) {
+    return textFormats.segments(text, runs, offset).map(part => {
+      const css = textFormats.css(part.style), value = esc(part.text);
+      return css ? `<span data-text-format="true" style="${css}">${value}</span>` : value;
+    }).join("");
+  }
   // Native image bytes are persisted with the journal; browser demo state excludes them.
   const imageLoads = new Set();
   function trackImage(p) {
@@ -326,6 +408,8 @@
     if (node.nodeType === 3) return node.data.replace(/\r/g, "");
     if (node.nodeType === 1 && node.dataset.mathSource !== undefined)
       return node.dataset.mathSource;
+    if (node.nodeType === 1 && node.dataset.linkSource !== undefined)
+      return node.dataset.linkSource;
     if (node.nodeType === 1 && node.dataset.ideaMarker) return "•";
     if (node.nodeType === 1 && node.dataset.imageToken)
       return node.dataset.imageToken;
@@ -380,19 +464,58 @@
   function drawBody(value) {
     const t = bodyField(),
       fragment = document.createDocumentFragment();
+    const appendStyledText = (text, offset, host = fragment) => {
+      for (const part of textFormats.segments(text, current().formats, offset)) {
+        const css = textFormats.css(part.style);
+        if (!css) host.append(document.createTextNode(part.text));
+        else {
+          const node = document.createElement("span");
+          node.dataset.textFormat = "true";
+          node.style.cssText = css;
+          node.textContent = part.text;
+          host.append(node);
+        }
+      }
+    };
+    const editing = document.activeElement === t;
+    const appendText = (text, offset) => {
+      for (const part of window.ScheduleContent.parts(text, true)) {
+        const source = text.slice(part.start, part.end);
+        if (part.kind !== "url" && part.kind !== "path") {
+          appendStyledText(source, offset + part.start); continue;
+        }
+        const node = document.createElement("a");
+        node.className = "j-editor-link";
+        node.dataset.editorLink = part.kind;
+        node.dataset.linkTarget = part.url || part.text;
+        node.href = part.kind === "url" ? part.url : "#";
+        node.title = editing ? "Ctrl + 单击打开；直接点击编辑" : "点击打开";
+        if (!editing && source !== part.text) {
+          node.dataset.linkSource = source;
+          node.contentEditable = "false";
+          appendStyledText(part.text, offset + part.textStart, node);
+        } else appendStyledText(source, offset + part.start, node);
+        fragment.append(node);
+      }
+    };
     let offset = 0,
       lineStart = true;
-    const runs =
-      document.activeElement === t
-        ? [{ kind: "text", text: String(value) }]
-        : window.ScheduleContent.mathParts(value);
+    const runs = window.ScheduleContent.mathParts(value);
     for (const run of runs) {
       if (run.kind === "math") {
+        if (editing) {
+          // Keep TeX editable and avoid treating backslashes or URLs inside math as links.
+          const lines = run.text.split("\n");
+          let sourceOffset = offset;
+          lines.forEach((line, i) => { if (i) { fragment.append(document.createElement("br")); sourceOffset++; } appendStyledText(line, sourceOffset); sourceOffset += line.length; });
+          offset += run.text.length; lineStart = run.text.endsWith("\n"); continue;
+        }
         const node = document.createElement("span");
         node.className = `j-math${run.display ? " is-display" : ""}`;
         node.dataset.mathSource = run.text;
         node.contentEditable = "false";
         node.title = "点击编辑公式";
+        node.style.cssText = textFormats.css(textFormats.at(current().formats, offset));
         node.innerHTML = mathMarkup(run);
         fragment.append(node);
         offset += run.text.length;
@@ -435,8 +558,9 @@
           marker.className = "j-completion-marker";
           marker.contentEditable = "false";
           marker.textContent = "•";
-          fragment.append(marker, document.createTextNode(part.slice(1)));
-        } else fragment.append(document.createTextNode(part));
+          fragment.append(marker);
+          appendText(part.slice(1), offset + 1);
+        } else appendText(part, offset);
         offset += part.length;
         lineStart = false;
       }
@@ -456,9 +580,9 @@
           (p) => p.offset === Number(marker.dataset.ideaOffset),
         ),
         done = !!idea?.done;
-      marker.textContent = done ? "✓" : "•";
+      marker.textContent = done ? "✓" : window.ScheduleState.taskState(idea) === "todo" ? "☐" : "•";
       marker.classList.toggle("is-done", done);
-      marker.setAttribute("aria-label", done ? "已完成" : "未完成");
+      marker.setAttribute("aria-label", done ? "已完成" : window.ScheduleState.taskState(idea) === "todo" ? "待办" : "普通想法");
     }
     const idea = ideaAtCaret(),
       button = $("#j-complete-idea");
@@ -472,18 +596,20 @@
       length = t.value.length;
     start = Math.max(0, Math.min(start, length));
     end = Math.max(start, Math.min(end, length));
-    const locate = (position) => {
+    const locate = (position, container = t) => {
       let used = 0;
-      for (let i = 0; i < t.childNodes.length; i++) {
-        const n = t.childNodes[i],
+      for (let i = 0; i < container.childNodes.length; i++) {
+        const n = container.childNodes[i],
           size = serializeEditor(n).length;
         if (n.nodeType === 3 && position <= used + size)
           return [n, position - used];
-        if (position === used) return [t, i];
-        if (position <= used + size) return [t, i + 1];
+        if (n.nodeType === 1 && (n.dataset.textFormat || n.dataset.editorLink && n.dataset.linkSource === undefined) && position <= used + size)
+          return locate(position - used, n);
+        if (position === used) return [container, i];
+        if (position <= used + size) return [container, i + 1];
         used += size;
       }
-      return [t, t.childNodes.length];
+      return [container, container.childNodes.length];
     };
     const [a, ao] = locate(start),
       [b, bo] = locate(end),
@@ -518,7 +644,7 @@
   });
   bodyField().setSelectionRange = setBodySelection;
   bodyField().addEventListener("focus", () => {
-    if (!bodyField().querySelector("[data-math-source]")) return;
+    if (!bodyField().querySelector("[data-math-source], [data-editor-link]")) return;
     const selection = editorSelection();
     drawBody(bodyField().value);
     setBodySelection(selection.start, selection.end);
@@ -527,6 +653,10 @@
     if (!composing) drawBody(bodyField().value);
   });
   bodyField().addEventListener("pointerdown", (e) => {
+    const link = e.target.closest("[data-editor-link]");
+    if (link && (document.activeElement !== bodyField() || e.ctrlKey || e.metaKey)) {
+      e.preventDefault(); completionCtrlTap = false; return;
+    }
     const formula = e.target.closest("[data-math-source]");
     if (!formula || e.button !== 0 || e.ctrlKey) return;
     e.preventDefault();
@@ -628,17 +758,21 @@
       "text/plain",
       value.replace(imagePattern, "[图片]"),
     );
+    const formats = textFormats.slice(current().formats, a, b);
+    let offset = 0;
     const html = value
       .split(/([\uE000-\uF8FF])/)
-      .map((part) =>
-        imageAssets.get(part)?.src
+      .map((part) => {
+        const result = imageAssets.get(part)?.src
           ? `<img data-journal-image="${part}" src="${imageAssets.get(part).src}" alt="${esc(imageAssets.get(part).name)}">`
-          : esc(part).replace(/\n/g, "<br>"),
-      )
+          : formattedText(part, formats, offset).replace(/\n/g, "<br>");
+        offset += part.length;
+        return result;
+      })
       .join("");
     e.clipboardData.setData(
       "text/html",
-      `<div data-journal-clipboard="true">${html}</div>`,
+      `<div data-journal-clipboard="true" data-journal-formats="${esc(JSON.stringify(formats))}">${html}</div>`,
     );
     if (cut) editBody(a, b, "");
   }
@@ -693,7 +827,13 @@
           }
           return Array.from(node.childNodes, visit).join("");
         };
-        editBody(t.selectionStart, t.selectionEnd, visit(own));
+        const value = visit(own);
+        let formats;
+        try {
+          if (!failed && own.hasAttribute("data-journal-formats"))
+            formats = textFormats.normalize(JSON.parse(own.getAttribute("data-journal-formats")), value.length);
+        } catch { formats = []; }
+        editBody(t.selectionStart, t.selectionEnd, value, undefined, undefined, formats);
         if (failed) notify("部分图片未能读取，请重新复制图片粘贴。");
         return;
       }
@@ -716,8 +856,9 @@
     const record = records[date],
       idea = record?.ideas?.find((p) => p.id === id);
     if (!idea || composing) return;
+    const previousDone = !!idea.done, previousTodo = idea.todo;
     const ideas = copyIdeas(record.ideas);
-    ideas.find((p) => p.id === id).done = !idea.done;
+    window.ScheduleState.setTaskState(ideas.find((p) => p.id === id), idea.done ? "todo" : "done");
     if (date === state.selected) {
       const h = historyFor();
       h.undo.push(bodySnapshot());
@@ -731,6 +872,7 @@
       renderCalendar();
     }
     updateCompletionMarkers();
+    offerIdeaUndo(date, id, {done: previousDone, todo: previousTodo}, {done: !previousDone, todo: true}, previousDone ? "已回到待办" : "已完成");
   }
   let completionCtrlTap = false;
   bodyField().addEventListener("keydown", (e) => {
@@ -758,6 +900,7 @@
   root.addEventListener("pointerdown", () => (completionCtrlTap = false), true);
   bodyField().addEventListener("click", (e) => {
     if (!e.ctrlKey || composing) return;
+    if (e.target.closest("[data-editor-link]")) { completionCtrlTap = false; return; }
     e.preventDefault();
     completionCtrlTap = false;
     const marker = e.target.closest("[data-idea-marker]");
@@ -797,6 +940,7 @@
     start: bodyField().selectionStart,
     end: bodyField().selectionEnd,
     ideas: copyIdeas(current().ideas),
+    formats: textFormats.normalize(current().formats, bodyField().value.length),
   });
   function historyFor() {
     if (!bodyHistory.has(state.selected))
@@ -846,6 +990,7 @@
     return { start, end, line, ideaStart };
   }
   function updateIdeaUI() {
+    updateFormatToolbar();
     updateCompletionMarkers();
     $("#j-idea-count").textContent = `${ideaCount(bodyField().value)} 个想法`;
     $('[data-action="idea"]').setAttribute(
@@ -859,14 +1004,12 @@
       : "Ctrl + V 粘贴文字或图片";
     const p = ideaAtCaret(),
       hint = $("#j-project-link-hint");
-    hint.hidden = !p;
-    if (p)
-      hint.innerHTML = `<button type="button" data-bind-current="${esc(p.id)}">当前想法 · ${esc(
-        p.projectIds
-          .map((id) => projectById(id)?.name)
-          .filter(Boolean)
-          .join("、") || "未绑定",
-      )}　修改</button>`;
+    $("#j-idea-settings").hidden = !p;
+    $("#j-idea-settings span").textContent = p?.important || p?.dueDate ? `${p.important ? "★ " : ""}${p.dueDate || "重要"}` : "待办、重要与截止日期";
+    $("#j-idea-menu-toggle").hidden = !p;
+    $('[data-action="bind-active-idea"]').textContent = "项目 · " + (p?.projectIds.map(id => projectById(id)?.name).filter(Boolean).join("、") || "未绑定");
+    hint.hidden = true;
+    if (!p) closeIdeaMenu();
   }
   function editBody(
     start,
@@ -874,6 +1017,7 @@
     replacement,
     selectionStart,
     selectionEnd = selectionStart,
+    insertedFormats,
   ) {
     const t = bodyField(),
       before = bodySnapshot();
@@ -883,12 +1027,13 @@
     t.setSelectionRange(caret, selectionEnd ?? caret);
     rememberBody(before, "structure");
     beforeEdit = null;
-    changeRecord(
-      { body: t.value },
-      { start, end, newEnd: start + replacement.length },
-    );
+    const edit = { start, end, newEnd: start + replacement.length };
+    changeRecord({ body: t.value, formats: textFormats.replace(
+      before.formats, before.body, t.value, edit, typingFormat, insertedFormats,
+    ) }, edit);
   }
   function undoBody(redo = false) {
+    resetTypingFormat();
     const h = historyFor(),
       from = redo ? h.redo : h.undo,
       to = redo ? h.undo : h.redo;
@@ -902,7 +1047,7 @@
     h.lastType = "";
     h.after = bodySnapshot();
     beforeEdit = null;
-    changeRecord({ body: t.value, ideas: copyIdeas(target.ideas) });
+    changeRecord({ body: t.value, ideas: copyIdeas(target.ideas), formats: target.formats || [] });
   }
   function toggleIdea() {
     if (composing) return;
@@ -945,11 +1090,114 @@
       );
     } else editBody(c.start, c.start, "• ", a + 2, b + 2);
   }
+  let pendingUndo = null;
   function notify(message) {
+    pendingUndo = null;
     clearTimeout(toastTimer);
     $("#j-toast").textContent = message;
     $("#j-toast").hidden = false;
     toastTimer = setTimeout(() => ($("#j-toast").hidden = true), 3000);
+  }
+  function closeIdeaMenu() {
+    $("#j-idea-menu").hidden = true;
+    $("#j-idea-menu-toggle").setAttribute("aria-expanded", "false");
+  }
+  function offerUndo(message, action) {
+    notify(message);
+    pendingUndo = action;
+    const button = document.createElement("button");
+    button.type = "button"; button.dataset.action = "undo-action"; button.textContent = "撤销";
+    $("#j-toast").append(button);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { pendingUndo = null; $("#j-toast").hidden = true; }, 10000);
+  }
+  async function performUndo() {
+    if (!pendingUndo || apiBusy || scheduleBusy || composing) return;
+    const action = pendingUndo; pendingUndo = null;
+    clearTimeout(toastTimer);
+    try { await action(); notify("已撤销"); }
+    catch (error) { notify(error.message); }
+  }
+  function offerIdeaUndo(date, id, before, after, message) {
+    offerUndo(message, async () => {
+      const r = records[date], idea = r?.ideas.find(p => p.id === id);
+      if (!idea || Object.keys(after).some(k => JSON.stringify(idea[k]) !== JSON.stringify(after[k])))
+        throw Error("这条想法已发生新修改，未覆盖当前内容。");
+      const ideas = copyIdeas(r.ideas), target = ideas.find(p => p.id === id);
+      for (const [k,v] of Object.entries(before)) {
+        if (v === undefined) delete target[k]; else target[k] = structuredClone(v);
+      }
+      if (date === state.selected) changeRecord({ideas});
+      else { r.ideas = ideas; state.edits[date] = r; }
+      await persist(); renderCalendar(); updateIdeaUI();
+    });
+  }
+  function deleteActiveIdea() {
+    const p = ideaAtCaret(), date = state.selected;
+    if (!p || composing) return;
+    const r = current(), range = ideaRanges(r.body).find(x => x.offset === p.offset);
+    const fields = r => ({body:r.body, ideas:copyIdeas(r.ideas), formats:r.formats || []});
+    const before = fields(r);
+    let end = range.end;
+    if (r.body[end] === "\n") end++;
+    editBody(range.offset, end, "", range.offset);
+    const after = fields(current());
+    closeIdeaMenu();
+    offerUndo("已删除想法", async () => {
+      const target = records[date];
+      if (!target || JSON.stringify(fields(target)) !== JSON.stringify(after))
+        throw Error("当天内容已有新修改，请使用编辑器撤销或历史备份，未覆盖新内容。");
+      if (date === state.selected) {
+        bodyField().value = before.body;
+        changeRecord(before);
+      } else { Object.assign(target, before); state.edits[date] = target; }
+      bodyHistory.delete(date);
+      await persist(); renderCalendar(); updateIdeaUI();
+    });
+  }
+  let todoCompleted = false, todoCategory = "all";
+  function renderTodoOverview() {
+    const rows = window.ScheduleFeatures.todos(records, today, todoCompleted).filter(r => todoCategory === "all" || (todoCategory === "important" ? r.important : todoCategory === "scheduled" ? r.scheduled : !r.important && !r.scheduled));
+    $(".j-ideas-pane").setAttribute("aria-label", "待办事项");
+    $("#j-overview-eyebrow").textContent = "待办 · 全部日期";
+    $("#j-overview-title").textContent = "待办";
+    $("#j-overview-summary").textContent = `${rows.length} 项${todoCompleted ? "已完成" : "待办"} · 普通笔记不计入`;
+    $("#j-overview-tools").innerHTML = `<div class="j-task-filters"><div class="j-segment" aria-label="任务状态"><button type="button" data-todo-status="pending" aria-pressed="${!todoCompleted}">待办</button><button type="button" data-todo-status="done" aria-pressed="${todoCompleted}">已完成</button></div><select id="j-todo-category" aria-label="筛选待办类型">${[["all","全部"],["basic","普通"],["important","重要"],["scheduled","日程"]].map(([value,label])=>`<option value="${value}" ${todoCategory===value?"selected":""}>${label}</option>`).join("")}</select></div>`;
+    $("#j-idea-pagination").hidden = true;
+    const labels = ["已逾期", "今天", "之后", "无日期"];
+    $("#j-overview-list").innerHTML = labels.map((label, group) => {
+      const items = rows.filter(r => r.group === group);
+      if (!items.length) return "";
+      return `<section class="j-todo-group"><h3>${todoCompleted ? ["较早","今天","之后","无日期"][group] : label}<small>${items.length}</small></h3>${items.map(r => `<article class="j-todo-row ${r.important?"is-important":""}" data-todo-id="${esc(r.id)}"><button type="button" class="j-overview-check" ${r.kind === "event" ? `data-event-complete="${esc(r.id)}" data-event-date="${r.date}"` : `data-complete-id="${esc(r.id)}" data-idea-day="${r.date}"`} aria-label="${r.done?"回到待办":"标记完成"}" aria-pressed="${r.done}">${r.done?"✓":"☐"}</button><button type="button" class="j-todo-open" data-todo-date="${r.date}" ${r.kind === "idea" ? `data-todo-idea="${esc(r.id)}"` : ""}><span>${esc(r.text.replace(/[\uE000-\uF8FF]/g, "[图片]"))}</span><small>${esc([r.important?"★ 重要":"", r.scheduled?"日程":"", r.due || "无截止日期", r.time, r.kind === "event" ? "独立日程" : (r.projectIds.map(id => projectById(id)?.name).filter(Boolean).join(" · ") || "想法")].filter(Boolean).join(" · "))}</small></button></article>`).join("")}</section>`;
+    }).join("") || `<div class="j-empty-ideas">${todoCompleted?"没有符合筛选的已完成事项。":"没有符合筛选的待办。可在想法操作菜单中设置，或添加日程。"}</div>`;
+    icons();
+  }
+  root.addEventListener("change",e=>{if(e.target.id==="j-todo-category"){todoCategory=e.target.value;renderTodoOverview();}});
+  root.addEventListener("click",e=>{const button=e.target.closest("[data-todo-status]");if(button){todoCompleted=button.dataset.todoStatus==="done";renderTodoOverview();}});
+  function rememberView() {
+    if (root.dataset.dayExpanded !== "true") {
+      const pane = state.filter === "all" ? $(".j-calendar-pane") : $(".j-ideas-pane");
+      state.navigation[state.filter] = { page: overviewPage, scroll: pane.scrollTop };
+    }
+    state.sidebarScroll = $(".j-sidebar").scrollTop;
+  }
+  function restoreViewPosition() {
+    const filter = state.filter;
+    requestAnimationFrame(() => {
+      if (filter !== state.filter || root.dataset.dayExpanded === "true") return;
+      const pane = filter === "all" ? $(".j-calendar-pane") : $(".j-ideas-pane");
+      pane.scrollTop = state.navigation[filter]?.scroll || 0;
+    });
+  }
+  function switchView(filter) {
+    rememberView();
+    root.dataset.dayExpanded = "false"; state.dayExpanded = false;
+    state.filter = filter;
+    overviewPage = state.navigation[filter]?.page || 0;
+    root.dataset.mobileDetail = "false";
+    renderCalendar(); restoreViewPosition();
+    if (root.clientWidth < 881) root.dataset.sidebar = "closed";
+    persist();
   }
   function projectIdeaRows(filter = state.filter) {
     const rows = [];
@@ -967,10 +1215,121 @@
       (a, b) => b.date.localeCompare(a.date) || a.idea.offset - b.idea.offset,
     );
   }
+  function renderSearchOverview() {
+    const rows = window.ScheduleFeatures.search(records, projects, state.query);
+    const pages = Math.max(1, Math.ceil(rows.length / 10));
+    overviewPage = Math.min(overviewPage, pages - 1);
+    $(".j-ideas-pane").setAttribute("aria-label", "全局搜索结果");
+    $("#j-overview-eyebrow").textContent = "搜索 · 全部日期与项目";
+    $("#j-overview-title").textContent = "搜索结果";
+    $("#j-overview-tools").innerHTML = "";
+    $("#j-overview-summary").textContent = state.query.trim() ? `${rows.length} 条结果` : "搜索正文、日程、资料、项目或截止日期";
+    $("#j-overview-list").innerHTML = rows.slice(overviewPage*10,overviewPage*10+10).map(r => `<button type="button" class="j-important-row" data-search-date="${r.date}" ${r.id?`data-search-idea="${esc(r.id)}"`:""}><span class="j-important-date">${r.date}</span><span class="j-important-content"><strong>${esc(r.title)} · ${r.type}</strong><span>${esc(r.text.replace(/[\uE000-\uF8FF]/g,"[图片]").slice(0,240))}</span></span><i data-lucide="chevron-right" aria-hidden="true"></i></button>`).join("") || `<div class="j-empty-ideas">${state.query.trim()?"没有找到匹配内容":"输入关键词开始查找"}</div>`;
+    $("#j-idea-pagination").hidden=pages<=1;
+    $("#j-idea-pagination").innerHTML=`<button type="button" class="j-text-button" data-action="idea-page-prev" ${overviewPage===0?"disabled":""}>上一页</button><span>${overviewPage+1} / ${pages}</span><button type="button" class="j-text-button" data-action="idea-page-next" ${overviewPage===pages-1?"disabled":""}>下一页</button>`;
+    icons();
+  }
+  let ideaSettingsTarget = null;
+  function openIdeaSettings(date, id) {
+    const r=records[date], idea=r?.ideas.find(p=>p.id===id);
+    if(!idea)return;
+    ideaSettingsTarget={date,id};
+    closeIdeaMenu();
+    $("#j-idea-state").value=window.ScheduleState.taskState(idea);
+    $("#j-idea-important").checked=!!idea.important;
+    $("#j-idea-due").value=idea.dueDate || "";
+    $("#j-idea-dialog-preview").textContent=visibleIdeas(r).find(p=>p.id===id)?.text.slice(0,180) || "当前想法";
+    $("#j-idea-dialog").showModal();
+  }
+  async function saveIdeaSettings() {
+    const {date,id}=ideaSettingsTarget, r=records[date];
+    const ideas=copyIdeas(r.ideas), idea=ideas.find(p=>p.id===id);
+    if(!idea)throw Error("想法已不存在，请重新选择。");
+    const nextState=$("#j-idea-state").value;
+    idea.important=$("#j-idea-important").checked;
+    idea.dueDate=$("#j-idea-due").value;
+    window.ScheduleState.setTaskState(idea,nextState);
+    if(date===state.selected)changeRecord({ideas});
+    else {r.ideas=ideas;state.edits[date]=r;}
+    await persist();renderCalendar();updateIdeaUI();
+    $("#j-idea-dialog").close();
+  }
+  $("#j-idea-due").addEventListener("change",()=>{if($("#j-idea-due").value && $("#j-idea-state").value==="note")$("#j-idea-state").value="todo";});
+  const ideaBadge = p => [p.important?"★ 重要":"", p.dueDate?`${!p.done&&p.dueDate<today?"逾期":"截止"} ${p.dueDate}`:""].filter(Boolean).join(" · ");
+  let restoreToken=null, dataBusy=false;
+  async function refreshHistory() {
+    const history=await window.journalNative.call("listHistory");
+    $("#j-history-list").innerHTML=history.map(h=>`<button type="button" class="j-history-row" data-history="${esc(h.id)}"><span>${esc(h.at)}</span><span>${h.id.startsWith("daily-")?"每日快照":h.id.startsWith("before-restore-")?"恢复前备份":"手动备份"} · ${Math.ceil(h.bytes/1024)} KB</span><span>预览</span></button>`).join("") || '<p>暂无历史版本。可以点击“立即备份”。</p>';
+  }
+  function showHistoryPreview(preview) {
+    if(preview.cancelled)return;
+    restoreToken=preview.token;
+    const host=$("#j-history-preview");host.hidden=false;
+    const description=r=>r?`${r.title || "无标题"}\n${r.body || ""}`:"（无记录）";
+    host.innerHTML=`<h3>恢复预览</h3><p>日期记录 ${preview.recordsBefore} → ${preview.recordsAfter} · 日程 ${preview.schedulesBefore} → ${preview.schedulesAfter}</p>`+
+      `<details><summary>项目与日程对比</summary><div class="j-history-diff"><pre>当前项目：${esc((preview.projectsBefore||[]).join("、"))}\n${esc((preview.eventsBefore||[]).join("\n"))}</pre><pre>备份项目：${esc((preview.projectsAfter||[]).join("、"))}\n${esc((preview.eventsAfter||[]).join("\n"))}</pre></div></details>`+
+      preview.dates.map(d=>`<details><summary>${d.date} · ${d.status}</summary><div class="j-history-diff"><div><strong>当前</strong><pre>${esc(description(d.before))}</pre></div><div><strong>备份</strong><pre>${esc(description(d.after))}</pre></div></div></details>`).join("");
+    $("#j-restore-history").hidden=false;
+    $("#j-data-status").textContent="恢复会替换全部数据，并先备份当前版本。项目、图片和格式也随备份恢复。";
+  }
+  root.addEventListener("click", async e=>{
+    const button=e.target.closest("button");if(!button)return;
+    const action=button.dataset.action;
+    if(action==="idea-settings") {const p=ideaAtCaret();if(p)openIdeaSettings(state.selected,p.id);return;}
+    if(button.dataset.ideaSettings) {openIdeaSettings(button.dataset.ideaDay,button.dataset.ideaSettings);return;}
+    if(action==="cancel-idea-settings") {$("#j-idea-dialog").close();return;}
+    if(action==="save-idea-settings") {try {await saveIdeaSettings();}catch(error){notify(error.message);}return;}
+    if(action==="close-data") {if(!dataBusy)$("#j-data-dialog").close();return;}
+    if(!["data","snapshot","export-backup","export-markdown","import-backup","import-markdown","restore-history"].includes(action)&&!button.dataset.history)return;
+    if(!window.journalNative){notify("请在桌面版管理本地数据。");return;}
+    if(dataBusy)return;
+    dataBusy=true;button.disabled=true;
+    try {
+      await window.journalFlush();
+      if(action==="data") {
+        restoreToken=null;$("#j-history-preview").hidden=true;$("#j-restore-history").hidden=true;$("#j-data-status").textContent="";
+        $("#j-data-dialog").showModal();await refreshHistory();
+      } else if(action==="snapshot") {await window.journalNative.call("snapshot");await refreshHistory();$("#j-data-status").textContent="备份已保存。";}
+      else if(button.dataset.history)showHistoryPreview(await window.journalNative.call("previewHistory",{id:button.dataset.history}));
+      else if(action==="import-backup")showHistoryPreview(await window.journalNative.call("importBackup"));
+      else if(action==="restore-history") {const result=await window.journalNative.call("restoreHistory",{token:restoreToken});if(result.warning)sessionStorage.setItem("restoreWarning",result.warning);location.reload();}
+      else if(action==="export-backup"||action==="export-markdown") {
+        const result=await window.journalNative.call("exportData",{format:action==="export-backup"?"backup":"markdown",...(action==="export-markdown"?window.ScheduleFeatures.markdown(records,projects,imageAssets):{})});
+        if(!result.cancelled)$("#j-data-status").textContent="已导出："+result.path;
+      } else if(action==="import-markdown") {
+        const result=await window.journalNative.call("importMarkdown");if(result.cancelled)return;
+        let text=result.text;
+        for(const image of result.images || []) {
+          const token=allocateImage(image.name);imageAssets.set(token,{name:image.name,src:image.src,status:"ready"});
+          text=text.split(image.markdown).join(token);
+        }
+        const imported=window.ScheduleFeatures.importMarkdown(text), old=current().body;
+        editBody(old.length,old.length,(old&&!old.endsWith("\n")?"\n":"")+imported.body);
+        const added=current().ideas.filter(p=>p.offset>=old.length);
+        added.forEach((p,i)=>window.ScheduleState.setTaskState(p,imported.flags[i]?"done":imported.tasks[i]?"todo":"note"));
+        await persist();renderEditor();renderCalendar();$("#j-data-status").textContent=`已追加到 ${state.selected}。`;
+      }
+    } catch(error) {$("#j-data-status").textContent=error.message;notify(error.message);}
+    finally {dataBusy=false;button.disabled=false;}
+  });
+  $("#j-data-dialog").addEventListener("cancel",e=>{if(dataBusy)e.preventDefault();});
   function renderIdeaOverview() {
-    const active = state.filter === "unbound" || !!projectById(state.filter);
+    const important = state.filter === "important";
+    const searching = state.filter === "search";
+    const active = state.filter === "todo" || searching || important || state.filter === "unbound" || !!projectById(state.filter);
     root.dataset.screen = active ? "ideas" : "calendar";
+    const searchRow = $(".j-search-row"), searchHost = searching ? $(".j-ideas-pane") : $(".j-calendar-pane");
+    if (searchRow.parentElement !== searchHost) searchHost.prepend(searchRow);
+    searchRow.hidden = !searching;
     if (!active) return;
+    if (state.filter === "todo") { renderTodoOverview(); return; }
+    if (searching) { renderSearchOverview(); return; }
+    $(".j-ideas-pane").setAttribute("aria-label", important ? "重要事项总览" : "项目想法总览");
+    $("#j-overview-eyebrow").textContent = important ? "重要事项 · 全部日期" : "想法总览 · 全部日期";
+    if (important) {
+      renderImportantOverview();
+      return;
+    }
     const project = projectById(state.filter),
       rows = projectIdeaRows(),
       pages = Math.max(1, Math.ceil(rows.length / 10));
@@ -996,7 +1355,8 @@
       const names = p.projectIds
         .map((id) => projectById(id)?.name)
         .filter(Boolean);
-      html += `<article class="j-overview-idea ${p.done ? "is-done" : ""}" data-idea-id="${esc(p.id)}" data-idea-date="${date}"><button type="button" class="j-overview-check" data-complete-id="${esc(p.id)}" data-idea-day="${date}" aria-label="${p.done ? "取消完成" : "标记完成"}" aria-pressed="${!!p.done}">${p.done ? "✓" : "○"}</button><div class="j-idea-content"><div class="j-idea-text">${overviewContent(p, date)}</div><div class="j-idea-bindings">${esc(names.join(" · ") || "未绑定项目")}</div></div><button type="button" class="j-binding-button" data-bind-idea="${esc(p.id)}" data-idea-day="${date}" aria-label="修改此想法的项目">${names.length ? "项目" : "绑定"}</button></article>`;
+      if (ideaBadge(p)) html += `<button type="button" class="j-idea-badge" data-idea-settings="${esc(p.id)}" data-idea-day="${date}">${esc(ideaBadge(p))}</button>`;
+      html += `<article class="j-overview-idea ${p.done ? "is-done" : ""}" data-idea-id="${esc(p.id)}" data-idea-date="${date}"><button type="button" class="j-overview-check" data-complete-id="${esc(p.id)}" data-idea-day="${date}" aria-label="${p.done ? "取消完成" : "标记完成"}" aria-pressed="${!!p.done}">${p.done ? "✓" : window.ScheduleState.taskState(p) === "todo" ? "☐" : "•"}</button><div class="j-idea-content"><div class="j-idea-text">${overviewContent(p, date)}</div><div class="j-idea-bindings">${esc(names.join(" · ") || "未绑定项目")}</div></div><button type="button" class="j-binding-button" data-bind-idea="${esc(p.id)}" data-idea-day="${date}" aria-label="修改此想法的项目">${names.length ? "项目" : "绑定"}</button></article>`;
     }
     if (lastDate) html += overviewResources(lastDate) + "</section>";
     $("#j-overview-list").innerHTML =
@@ -1006,10 +1366,12 @@
   }
   function overviewContent(idea, date) {
     const open = `data-open-idea="${esc(idea.id)}" data-idea-day="${date}"`;
-    return window.ScheduleContent.parts(idea.text)
+    const record = records[date],
+      display = textFormats.forIdea(record.body, idea, record.formats);
+    return window.ScheduleContent.parts(display.text, true)
       .map((part) => {
         if (part.kind === "math")
-          return `<button type="button" class="j-idea-open j-math${part.display ? " is-display" : ""}" ${open} title="编辑公式">${mathMarkup(part)}</button>`;
+          return `<button type="button" class="j-idea-open j-math${part.display ? " is-display" : ""}" ${open} title="编辑公式" style="${textFormats.css(textFormats.at(display.formats, part.start))}">${mathMarkup(part)}</button>`;
         if (part.kind === "image") {
           const asset = imageAssets.get(part.token);
           if (
@@ -1026,19 +1388,41 @@
           return `<button type="button" class="j-image-placeholder" ${open}>${status}</button>`;
         }
         if (part.kind === "url")
-          return `<a class="j-idea-link" href="${esc(part.url)}" data-external-url="${esc(part.url)}" target="_blank" rel="noopener noreferrer">${esc(part.text)}</a>`;
+          return `<a class="j-idea-link" href="${esc(part.url)}" data-external-url="${esc(part.url)}" target="_blank" rel="noopener noreferrer">${formattedText(part.text, display.formats, part.textStart)}</a>`;
         if (part.kind === "path")
-          return `<button type="button" class="j-idea-link" data-inline-path="${esc(part.text)}" title="打开本地路径">${esc(part.text)}</button>`;
+          return `<button type="button" class="j-idea-link" data-inline-path="${esc(part.text)}" title="打开本地路径">${formattedText(part.text, display.formats, part.textStart)}</button>`;
+        let offset = part.textStart;
         return part.text
           .split("\n")
-          .map((line) =>
-            line
-              ? `<button type="button" class="j-idea-open" ${open}>${esc(line)}</button>`
-              : "",
-          )
+          .map((line) => {
+            const result = line ? `<button type="button" class="j-idea-open" ${open}>${formattedText(line, display.formats, offset)}</button>` : "";
+            offset += line.length + 1;
+            return result;
+          })
           .join("<br>");
       })
       .join("");
+  }
+  function renderImportantOverview() {
+    const days = Object.entries(records)
+      .filter(([, record]) => isImportant(record))
+      .sort(([a], [b]) => b.localeCompare(a));
+    const pages = Math.max(1, Math.ceil(days.length / 10));
+    overviewPage = Math.min(overviewPage, pages - 1);
+    $("#j-overview-title").textContent = "重要事项";
+    $("#j-overview-summary").textContent = `${days.length} 个重要日期 · 点击查看当天安排`;
+    $("#j-overview-tools").innerHTML = "";
+    const pagination = $("#j-idea-pagination");
+    pagination.hidden = pages <= 1;
+    pagination.innerHTML = `<button type="button" class="j-text-button" data-action="idea-page-prev" ${overviewPage === 0 ? "disabled" : ""}>较新</button><span>${overviewPage + 1} / ${pages}</span><button type="button" class="j-text-button" data-action="idea-page-next" ${overviewPage === pages - 1 ? "disabled" : ""}>更早</button>`;
+    $("#j-overview-list").innerHTML = days.slice(overviewPage * 10, overviewPage * 10 + 10)
+      .map(([date, record]) => {
+        const schedule = scheduleData(record);
+        const title = record.title || schedule?.title || "重要记录";
+        const details = [schedule ? `${schedule.time} · ${schedule.title}` : "", `${score(record)} 个想法`].filter(Boolean).join(" · ");
+        return `<button type="button" class="j-important-row" data-important-date="${date}" aria-label="查看 ${date} ${esc(title)}"><span class="j-important-date">${esc(date.replace(/-/g, " / "))}</span><span class="j-important-content"><strong>${esc(title)}</strong><span>${esc(details)}</span></span><i data-lucide="chevron-right" aria-hidden="true"></i></button>`;
+      }).join("") || '<div class="j-empty-ideas">暂无重要事项<br>点击当天日期旁的星标，或在日程中勾选“标为重要”。</div>';
+    icons();
   }
   function resourceMarkup(file, index, date) {
     return `<button type="button" class="j-resource" data-resource="${index}" data-resource-date="${date}" aria-label="打开${esc(file.name)}"><span class="j-resource-icon"><i data-lucide="${file.kind === "folder" ? "folder" : "file-text"}" aria-hidden="true"></i></span><span class="j-resource-info"><span class="j-resource-name">${esc(file.name)}</span><span class="j-resource-path">${esc(resourcePath(file) || "未关联有效路径")}</span></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></button>`;
@@ -1095,6 +1479,7 @@
         pickerTarget = null;
         return;
       }
+      const undoDate = pickerTarget.date, undoId = p.id, previousIds = [...p.projectIds];
       const ideas = copyIdeas(target.ideas);
       ideas.find((x) => x.id === p.id).projectIds = ids;
       if (pickerTarget.date === state.selected) changeRecord({ ideas });
@@ -1103,6 +1488,7 @@
         state.edits[pickerTarget.date] = target;
         persist();
       }
+      offerIdeaUndo(undoDate, undoId, {projectIds: previousIds}, {projectIds: ids}, "已更新项目关联");
     } else {
       newIdeaProjects = ids;
       persist();
@@ -1243,6 +1629,9 @@
       query: state.query,
       sidebar: state.sidebar,
       sidebarWidth: state.sidebarWidth,
+      navigation: state.navigation,
+      dayExpanded: state.dayExpanded,
+      sidebarScroll: state.sidebarScroll,
       projects,
       newIdeaProjects,
       edits: state.edits,
@@ -1250,8 +1639,14 @@
     if (window.journalNative) {
       return window.journalNative
         .call("saveState", { privateContent, nativeImages: [...imageAssets] })
-        .then(() => {
+        .then((result) => {
           $("#j-save-status").textContent = "已保存到本机";
+          if (result?.schedules && applyScheduleProjection(result.schedules)) {
+            window.journalNative.schedules=result.schedules;
+            renderCalendar();renderSchedule();
+            const failed=Object.values(result.schedules).find(s=>s.Status==="error");
+            if(failed)notify("记录已保存，但关联日程提醒未同步："+failed.Error);
+          }
         })
         .catch((e) => {
           $("#j-save-status").textContent = "保存失败";
@@ -1316,13 +1711,20 @@
     const filter =
       projects.find((x) => x.id === p.filter || x.name === p.filter)?.id ||
       p.filter;
-    if (["all", "important", "unbound"].includes(filter) || projectById(filter))
+    if (["all", "important", "unbound", "search", "todo"].includes(filter) || projectById(filter))
       state.filter = filter;
     newIdeaProjects = Array.isArray(p.newIdeaProjects)
       ? p.newIdeaProjects.filter((id) => projectById(id))
       : [];
     state.query = String(p.query || "");
     state.sidebar = p.sidebar;
+    state.dayExpanded = p.dayExpanded === true;
+    state.sidebarScroll = Math.max(0, Number(p.sidebarScroll) || 0);
+    for (const [filter, value] of Object.entries(p.navigation || {})) {
+      if (!["all","important","unbound","search","todo"].includes(filter) && !projectById(filter)) continue;
+      state.navigation[filter] = {page: Math.max(0, Math.floor(Number(value?.page) || 0)), scroll: Math.max(0, Number(value?.scroll) || 0)};
+    }
+    overviewPage = state.navigation[state.filter]?.page || 0;
     if (Number.isFinite(p.sidebarWidth))
       state.sidebarWidth = Math.max(160, Math.min(420, p.sidebarWidth));
     if (p.edits && typeof p.edits === "object") {
@@ -1342,11 +1744,12 @@
   }
   function renderCalendar() {
     renderProjects();
+    $("#j-todo-count").textContent = window.ScheduleFeatures.todos(records, today).length || "";
     queueMicrotask(() =>
       $$("button").forEach((b) => b.classList.add("cursor-interaction")),
     );
     $(".j-nav-count").textContent = Object.values(records).filter(
-      (r) => r.important,
+      (r) => isImportant(r),
     ).length;
     $("#j-write-label").textContent = hasContent(current())
       ? "继续记录"
@@ -1358,7 +1761,7 @@
       state.view === "year" ? "年度概览" : String(state.year);
     $("#j-month-label").textContent =
       state.view === "year" ? String(state.year) : names[state.month];
-    $("#j-month-note").textContent = state.query
+    $("#j-month-note").textContent = state.filter === "search" && state.query
       ? `搜索：${state.query}`
       : state.filter === "all"
         ? "日常记录，慢慢累积"
@@ -1368,7 +1771,7 @@
     $("#j-month-calendar").hidden = state.view !== "month";
     $("#j-year-grid").hidden = state.view !== "year";
     root.dataset.view = state.view;
-    $$(".j-segment button").forEach((b) =>
+    $$(".j-segment button[data-view]").forEach((b) =>
       b.setAttribute("aria-pressed", String(b.dataset.view === state.view)),
     );
     $$(".j-nav[data-filter]").forEach((b) =>
@@ -1404,17 +1807,18 @@
         const d = i - start + 1;
         if (d < 1 || d > total) {
           const out = new Date(state.year, state.month, d);
-          html += `<div class="j-day j-outside" aria-hidden="true"><span class="j-day-number">${out.getDate()}</span></div>`;
+          const k = key(out.getFullYear(), out.getMonth(), out.getDate());
+          html += `<button type="button" class="j-day j-outside" data-date="${k}" aria-label="${out.getFullYear()}年${out.getMonth() + 1}月${out.getDate()}日，切换到该月" aria-pressed="${state.selected === k}"><span class="j-day-number">${out.getDate()}</span></button>`;
           continue;
         }
         const k = key(state.year, state.month, d),
           r = records[k],
           l = level(r, max),
           show = matches(r),
-          imp = show && (r.important || r.schedule),
+          imp = show && (isImportant(r) || r.schedule),
           title = show ? r.title || scheduleData(r)?.title || "" : "",
-          desc = `${state.year}年${state.month + 1}月${d}日${title ? "，" + title : ""}${show && r.important ? "，重要事项" : ""}${show && r.schedule ? "，有日程" : ""}，${show ? score(r) : 0} 个想法，深浅${l}级`;
-        html += `<button type="button" class="j-day ${state.selected === k ? "is-selected " : ""}${k === today ? "is-today " : ""}${r && !show ? "no-match" : ""}" data-date="${k}" data-level="${l}" aria-label="${esc(desc)}" aria-pressed="${state.selected === k}"><span class="j-day-top"><span class="j-day-number">${d}</span>${imp ? `<span class="j-day-marker ${r.important ? "" : "is-normal"}" aria-hidden="true">${r.schedule ? "◷" : "•"}</span>` : ""}</span>${title ? `<span class="j-day-preview">${esc(title)}</span>` : ""}</button>`;
+          desc = `${state.year}年${state.month + 1}月${d}日${title ? "，" + title : ""}${show && isImportant(r) ? "，重要事项" : ""}${show && r.schedule ? "，有日程" : ""}，${show ? score(r) : 0} 个想法，深浅${l}级`;
+        html += `<button type="button" class="j-day ${state.selected === k ? "is-selected " : ""}${k === today ? "is-today " : ""}${r && !show ? "no-match" : ""}" data-date="${k}" data-level="${l}" aria-label="${esc(desc)}" aria-pressed="${state.selected === k}"><span class="j-day-top"><span class="j-day-number">${d}</span>${imp ? `<span class="j-day-marker ${isImportant(r) ? "" : "is-normal"}" aria-hidden="true">${r.schedule ? "◷" : "•"}</span>` : ""}</span>${title ? `<span class="j-day-preview">${esc(title)}</span>` : ""}</button>`;
       }
       $("#j-days").innerHTML = html;
     } else {
@@ -1429,7 +1833,7 @@
           const k = key(state.year, m, d),
             r = records[k],
             l = level(r, max);
-          html += `<button type="button" data-date="${k}" data-level="${l}" class="${state.selected === k ? "is-selected " : ""}${matches(r) && r.important ? "has-important " : ""}${matches(r) && r.schedule ? "has-schedule" : ""}" aria-label="${m + 1}月${d}日，${matches(r) ? score(r) : 0} 个想法，深浅${l}级" data-tooltip="${m + 1}月${d}日${r ? " · " + esc(r.title) : ""}"></button>`;
+          html += `<button type="button" data-date="${k}" data-level="${l}" class="${state.selected === k ? "is-selected " : ""}${matches(r) && isImportant(r) ? "has-important " : ""}${matches(r) && r.schedule ? "has-schedule" : ""}" aria-label="${m + 1}月${d}日，${matches(r) ? score(r) : 0} 个想法，深浅${l}级" data-tooltip="${m + 1}月${d}日${r ? " · " + esc(r.title) : ""}"></button>`;
         }
         html += "</div></section>";
       }
@@ -1459,29 +1863,64 @@
     return s.status === "scheduled" ? "Windows 已排程" : "尚未确认排程";
   }
   function renderSchedule() {
-    const r = current(),
-      s = scheduleData(r),
-      b = $("#j-schedule");
-    b.classList.toggle("is-important", !!r.important);
-    b.classList.toggle("has-schedule", !!s);
-    b.querySelector("span").textContent = s
-      ? `${s.time} · ${s.title}`
-      : "添加日程";
-    b.setAttribute("aria-label", s ? "编辑日程：" + s.title : "添加日程");
-    $("#j-schedule-status").textContent = s ? reminderLabel(s) : "";
-    $("#j-schedule-status").hidden = !s;
+    const events = eventsFor(current()).slice().sort((a,b) => a.time.localeCompare(b.time));
+    const b = $("#j-schedule");
+    b.classList.remove("is-important", "has-schedule");
+    b.querySelector("span").textContent = "添加日程";
+    $("#j-schedule-status").hidden = true;
+    $("#j-schedule-list").innerHTML = events.map(s => `<div class="j-event-row ${s.done ? "is-done" : ""} ${s.important ? "is-important" : ""}"><button type="button" class="j-icon" data-event-complete="${esc(s.id)}" aria-label="${s.done ? "取消完成日程" : "完成日程"}" aria-pressed="${!!s.done}">${s.done ? "✓" : "○"}</button><button type="button" class="j-event-open" data-event-edit="${esc(s.id)}"><span>${esc(s.time)} · ${esc(s.title)}</span><small>${esc(s.done ? "已完成" : reminderLabel(s))}</small></button></div>`).join("");
   }
-  let scheduleDate = null,
+  function setDayEvents(date, events) {
+    const r = records[date] || empty();
+    r.appointments = events.slice().sort((a,b) => a.time.localeCompare(b.time));
+    r.appointment = r.appointments[0] || null;
+    r.schedule = r.appointments.map(s => `${s.time} · ${s.title}`).join("；");
+    r.kind = "journal";
+    records[date] = r; state.edits[date] = r;
+  }
+  function applyScheduleProjection(schedules) {
+    const byDate = new Map();
+    for (const [key, value] of Object.entries(schedules)) {
+      const event = normalizeSchedule(value), date = event.date || key.split("/")[0];
+      event.id ||= "legacy-" + date;
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(event);
+    }
+    let changed = false;
+    for (const date of new Set([...Object.keys(records), ...byDate.keys()])) {
+      const events = (byDate.get(date) || []).sort((a,b) => a.time.localeCompare(b.time));
+      if (JSON.stringify(eventsFor(records[date])) !== JSON.stringify(events)) {setDayEvents(date, events);changed = true;}
+    }
+    return changed;
+  }
+  function scheduleIdeaSelection() {
+    const value = $("#j-schedule-idea").value;
+    return value ? {date:value.slice(0,10),id:value.slice(11)} : null;
+  }
+  function updateScheduleLink() {
+    const link = scheduleIdeaSelection(), idea = link && records[link.date]?.ideas.find(p=>p.id===link.id);
+    $("#j-schedule-done").disabled = !!idea;
+    if (idea) $("#j-schedule-done").checked = !!idea.done;
+    $("#j-schedule-done-label").textContent = idea ? "完成状态跟随关联想法" : "已完成（取消提醒）";
+  }
+  $("#j-schedule-idea").addEventListener("change", updateScheduleLink);
+  let scheduleDate = null, scheduleId = null,
     scheduleBusy = false;
-  async function openSchedule() {
+  async function openSchedule(id = null, ideaLink = null) {
     scheduleDate = state.selected;
-    const s = scheduleData(),
-      r = current();
+    scheduleId = id;
+    const s = eventsFor(current()).find(s => s.id === id), r = current();
     $("#j-schedule-date").textContent = state.selected.replace(/-/g, " / ");
     $("#j-schedule-title").value = s?.title || "";
     $("#j-schedule-time").value = s?.time || "09:00";
     $("#j-remind").value = String(s?.remindMinutes ?? 15);
-    $("#j-schedule-important").checked = !!r.important;
+    $("#j-schedule-important").checked = !!s?.important;
+    $("#j-schedule-done").checked = !!s?.done;
+    const link = ideaLink || (s?.ideaId ? {date:s.ideaDate,id:s.ideaId} : null);
+    $("#j-schedule-idea").innerHTML = '<option value="">独立日程</option>' + Object.entries(records).sort((a,b)=>b[0].localeCompare(a[0])).flatMap(([date, record]) => visibleIdeas(record).map(idea => `<option value="${esc(date + "/" + idea.id)}">${esc(date + " · " + idea.text.slice(0,80))}</option>`)).join("");
+    $("#j-schedule-idea").value = link ? link.date + "/" + link.id : "";
+    if (ideaLink) $("#j-schedule-title").value = visibleIdeas(records[ideaLink.date]).find(p=>p.id===ideaLink.id)?.text.slice(0,100) || "";
+    updateScheduleLink();
     $("#j-schedule-delete").hidden = !s;
     $("#j-schedule-error").textContent = s?.error || "";
     $("#j-notification-status").textContent = window.journalNative
@@ -1526,7 +1965,7 @@
         return;
       }
       if (
-        remindMinutes >= 0 &&
+        !$("#j-schedule-done").checked && remindMinutes >= 0 &&
         date.getTime() - remindMinutes * 60000 <= Date.now()
       ) {
         error.textContent = "提醒时间已过，请改为未来时间，或选择“不提醒”。";
@@ -1538,30 +1977,35 @@
         at: date.toISOString(),
         remindMinutes,
         important: $("#j-schedule-important").checked,
+        done: $("#j-schedule-done").checked,
         status: window.journalNative ? "pending" : "preview",
       };
+      const link = scheduleIdeaSelection();
+      if (link) {s.ideaDate=link.date;s.ideaId=link.id;}
     }
     scheduleBusy = true;
     $("#j-schedule-save").disabled = true;
     $("#j-schedule-delete").disabled = true;
     try {
+      if (s?.ideaId) {
+        const record=records[s.ideaDate], idea=record?.ideas.find(p=>p.id===s.ideaId);
+        if(!idea)throw Error("关联想法已不存在。");
+        idea.todo=true;state.edits[s.ideaDate]=record;s.done=!!idea.done;
+      }
+      await persist();
       if (window.journalNative) {
         const result = await window.journalNative.call("saveSchedule", {
           date: scheduleDate,
+          id: scheduleId,
           schedule: s,
         });
         if (s) s = normalizeSchedule(result);
       }
-      const existing = records[scheduleDate] || empty(),
-        r = {
-          ...existing,
-          appointment: s,
-          schedule: s ? `${s.time} · ${s.title}` : "",
-          important: s ? s.important : existing.important,
-          kind: "journal",
-        };
-      records[scheduleDate] = r;
-      state.edits[scheduleDate] = r;
+      if (s && !s.id) s.id = scheduleId || crypto.randomUUID();
+      const events = eventsFor(records[scheduleDate]).filter(x => x.id !== scheduleId);
+      if (s) events.push(s);
+      setDayEvents(scheduleDate, events);
+      const r = records[scheduleDate];
       await persist();
       renderCalendar();
       if (state.selected === scheduleDate) {
@@ -1592,7 +2036,40 @@
   }
   root.addEventListener("click", async (e) => {
     const action = e.target.closest("button")?.dataset.action;
-    if (action === "schedule") openSchedule();
+    const editId = e.target.closest("[data-event-edit]")?.dataset.eventEdit;
+    const completeId = e.target.closest("[data-event-complete]")?.dataset.eventComplete;
+    if (editId) openSchedule(editId);
+    else if (completeId) {
+      if (scheduleBusy || apiBusy) return;
+      scheduleBusy = true;
+      try {
+        const date = e.target.closest("[data-event-date]")?.dataset.eventDate || state.selected, previous = eventsFor(records[date]).find(s => s.id === completeId);
+        if (!previous) return;
+        if (previous.ideaId) {toggleCompletion(previous.ideaDate, previous.ideaId);return;}
+        const candidate = { ...previous, done: !previous.done };
+        if (!candidate.done && new Date(candidate.at).getTime() - candidate.remindMinutes * 60000 <= Date.now()) candidate.remindMinutes = -1;
+        const saved = window.journalNative ? normalizeSchedule(await window.journalNative.call("saveSchedule", {date, id: completeId, schedule:candidate})) : candidate;
+        setDayEvents(date, eventsFor(records[date]).map(s => s.id === completeId ? saved : s));
+        await persist(); renderCalendar(); renderSchedule();
+        offerUndo(candidate.done ? "日程已完成" : "已取消完成", async () => {
+          const currentEvent = eventsFor(records[date]).find(s => s.id === completeId);
+          if (JSON.stringify(currentEvent) !== JSON.stringify(saved)) throw Error("日程已有新修改，未覆盖当前内容。");
+          scheduleBusy = true;
+          try {
+            const restore = {...previous};
+            if (!restore.done && new Date(restore.at).getTime() - restore.remindMinutes * 60000 <= Date.now()) restore.remindMinutes = -1;
+            const restored = window.journalNative ? normalizeSchedule(await window.journalNative.call("saveSchedule", {date,id:completeId,schedule:restore})) : restore;
+            setDayEvents(date, eventsFor(records[date]).map(s => s.id === completeId ? restored : s));
+            await persist(); renderCalendar(); renderSchedule();
+          } finally { scheduleBusy = false; }
+        });
+      } catch(error) { notify(error.message); }
+      finally { scheduleBusy = false; }
+    }
+    else if (action === "schedule") openSchedule();
+    else if (action === "idea-reminder") {
+      const idea=ideaAtCaret();if(idea){closeIdeaMenu();openSchedule(null,{date:state.selected,id:idea.id});}
+    }
     else if (action === "cancel-schedule" && !scheduleBusy)
       $("#j-schedule-dialog").close();
     else if (action === "save-schedule") saveSchedule();
@@ -1632,7 +2109,7 @@
   window.addEventListener("journal:toggle-idea", (e) => {
     const d = e.detail;
     if (d && typeof d.date === "string" && typeof d.id === "string")
-      toggleCompletion(d.date, d.id);
+      if(apiBusy)notify("正在同步，请稍后再修改。");else toggleCompletion(d.date, d.id);
   });
   window.journalFlush = async () => {
     await Promise.all([...imageLoads, ...pathLoads]);
@@ -1640,6 +2117,129 @@
     clearTimeout(saveTimer);
     return persist();
   };
+  let apiBusy = false;
+  const apiSnapshot = () => JSON.stringify({records,projects,images:[...imageAssets]});
+  async function apiRevision() {
+    const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(apiSnapshot()));
+    return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
+  }
+  function apiDate(value) {
+    if(typeof value!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(value)||new Date(value+"T12:00:00").toLocaleDateString("sv-SE")!==value)throw Error("INVALID_DATE: expected YYYY-MM-DD");
+    return value;
+  }
+  function apiText(value,name,max=200000) {
+    if(typeof value!=="string"||!value.trim()||value.length>max)throw Error(`INVALID_INPUT: ${name}`);
+    return value;
+  }
+  async function executeApi(request) {
+    if(!request || typeof request!=="object")throw Error("INVALID_REQUEST");
+    const operations=["capabilities","list_projects","get_day","get_project","search","add_idea","update_idea","create_project","save_event","delete_event"];
+    if(!operations.includes(request.op))throw Error("UNKNOWN_OPERATION");
+    if(apiBusy||composing||scheduleBusy||dataBusy||root.querySelector("dialog[open]"))throw Error("BUSY: finish the current edit or dialog before calling the API");
+    const activeElement=document.activeElement, activeSelection=editorSelection();
+    apiBusy=true;root.inert=true;
+    let rollback=null;
+    try {
+      await window.journalFlush();
+      const revision=await apiRevision();
+      const write=["add_idea","update_idea","create_project","save_event","delete_event"].includes(request.op);
+      if(write && request.revision!==revision)throw Error("CONFLICT: read current state and reapply the intended change");
+      let result;
+      if(request.op==="capabilities")result={version:1,operations,processId:window.__journalBoot.processId,appDirectory:window.__journalBoot.appDirectory,dataDirectory:window.__journalBoot.dataDirectory,writeRule:"Read, then send the returned revision. A conflict requires a fresh read; never overwrite journal.json.",transport:"same-user Windows named pipe"};
+      else if(request.op==="list_projects")result=projects;
+      else if(request.op==="get_day") {
+        const date=apiDate(request.date), record=records[date] || empty();
+        result={date,record,ideas:visibleIdeas(record)};
+      } else if(request.op==="get_project") {
+        if(request.id!=="unbound"&&!projectById(request.id))throw Error("NOT_FOUND: project");
+        result={project:projectById(request.id)||null,ideas:projectIdeaRows(request.id)};
+      } else if(request.op==="search")result=window.ScheduleFeatures.search(records,projects,apiText(request.query,"query",1000));
+      else {
+        rollback=JSON.parse(JSON.stringify({records,projects,edits:state.edits}));
+        if(request.op==="create_project") {
+          const name=apiText(request.name,"name",100).trim();
+          if(request.root!==undefined&&typeof request.root!=="string")throw Error("INVALID_INPUT: root");
+          const project={id:"project-"+crypto.randomUUID(),name,root:request.root||""};projects.push(project);result=project;
+        } else {
+          const date=apiDate(request.date), r=records[date] || empty();
+          if(request.op==="add_idea"||request.op==="update_idea") {
+            const ids=request.projectIds;
+            if(ids!==undefined&&(!Array.isArray(ids)||ids.some(id=>!projectById(id))))throw Error("INVALID_INPUT: projectIds");
+            if(request.important!==undefined&&typeof request.important!=="boolean"||request.done!==undefined&&typeof request.done!=="boolean")throw Error("INVALID_INPUT: important/done");
+            if(request.dueDate!==undefined&&typeof request.dueDate!=="string")throw Error("INVALID_INPUT: dueDate");
+            if(request.todo!==undefined&&typeof request.todo!=="boolean")throw Error("INVALID_INPUT: todo");
+            if(request.taskState!==undefined&&!["note","todo","done"].includes(request.taskState))throw Error("INVALID_INPUT: taskState");
+            if(request.taskState!==undefined&&(request.done!==undefined||request.todo!==undefined))throw Error("INVALID_INPUT: use taskState or legacy done/todo fields, not both");
+            if((request.taskState==="note"||request.todo===false)&&request.dueDate)throw Error("INVALID_INPUT: ordinary notes cannot have a deadline");
+            if(request.dueDate)apiDate(request.dueDate);
+            let idea;
+            if(request.op==="add_idea") {
+              const text=apiText(request.text,"text").replace(/\r\n?/g,"\n");
+              if(/^•(?: |$)/m.test(text))throw Error("INVALID_INPUT: add one idea per request; do not include manual bullet markers");
+              const prefix=r.body && !r.body.endsWith("\n")?"\n":"";
+              idea={id:makeIdeaId(),offset:r.body.length+prefix.length,done:false,important:false,dueDate:"",projectIds:[]};
+              r.body+=prefix+"• "+text;r.ideas=[...copyIdeas(r.ideas),idea];
+            } else {
+              r.ideas=copyIdeas(r.ideas);idea=r.ideas.find(p=>p.id===request.id);
+              if(!idea)throw Error("NOT_FOUND: idea");
+              if(request.text!==undefined) {
+                const text=apiText(request.text,"text").replace(/\r\n?/g,"\n");
+                if(/^•(?: |$)/m.test(text))throw Error("INVALID_INPUT: update one idea per request");
+                const range=ideaRanges(r.body).find(p=>p.offset===idea.offset), start=range.offset+2;
+                let end=range.end;while(end>start&&r.body[end-1]==="\n")end--;
+                const after=r.body.slice(0,start)+text+r.body.slice(end), mutation={start,end,newEnd:start+text.length};
+                r.formats=textFormats.replace(r.formats,r.body,after,mutation);
+                for(const other of r.ideas)if(other.offset>=end)other.offset+=text.length-(end-start);
+                r.body=after;
+              }
+            }
+            if(ids!==undefined)idea.projectIds=[...new Set(ids)];
+            const wasDone=!!idea.done;
+            if(request.done!==undefined)idea.done=request.done;
+            if(request.todo!==undefined)idea.todo=request.todo;
+            if(request.important!==undefined)idea.important=request.important;
+            if(request.dueDate!==undefined)idea.dueDate=request.dueDate||"";
+            if(request.taskState!==undefined)window.ScheduleState.setTaskState(idea,request.taskState);
+            else if(request.todo===false&&!request.done)window.ScheduleState.setTaskState(idea,"note");
+            else if(request.done===false&&wasDone)window.ScheduleState.setTaskState(idea,"todo");
+            window.ScheduleState.normalizeIdea(idea);
+            r.kind="journal";records[date]=r;state.edits[date]=r;bodyHistory.delete(date);result={date,idea};
+          } else {
+            const id=request.id || null;
+            if(request.op==="delete_event"&&!eventsFor(r).some(s=>s.id===id))throw Error("NOT_FOUND: event");
+            const event=request.op==="delete_event"?null:request.event;
+            if(event!==null&&(!event||typeof event!=="object"))throw Error("INVALID_INPUT: event");
+            const value=await window.journalNative.call("saveSchedule",{date,id,schedule:event});
+            const events=eventsFor(r).filter(s=>s.id!==id);
+            if(event)events.push(normalizeSchedule(value));
+            setDayEvents(date,events);result=event?normalizeSchedule(value):{removed:true};
+            // Native event writes are already durable. Preserve them if the following UI save fails.
+            rollback=null;
+          }
+        }
+        await persist();rollback=null;
+        renderCalendar();renderEditor();
+      }
+      return {ok:true,revision:write?await apiRevision():revision,result};
+    } catch(error) {
+      if(rollback) {
+        for(const date of Object.keys(records))delete records[date];Object.assign(records,rollback.records);
+        projects=rollback.projects;state.edits=rollback.edits;renderCalendar();renderEditor();
+      }
+      throw error;
+    } finally {
+      apiBusy=false;root.inert=false;
+      if(activeElement?.isConnected) {
+        activeElement.focus({preventScroll:true});
+        if(activeElement===bodyField())setBodySelection(activeSelection.start,activeSelection.end);
+      }
+    }
+  }
+  window.addEventListener("journal:api",async e=>{
+    const {requestId,request}=e.detail;let response;
+    try {response=await executeApi(request);}catch(error){response={ok:false,error:error.message};}
+    await window.journalNative.call("apiResult",{requestId,response});
+  });
 
   const sidebarHandle = $("#j-sidebar-resizer");
   let sidebarDrag = null;
@@ -1807,6 +2407,8 @@
       ] + (state.selected === today ? " · 今天" : "");
   }
   function renderEditor() {
+    resetTypingFormat();
+    formatOpen = false; closeIdeaMenu();
     const [, m, d] = parse(state.selected),
       r = current();
     renderSelectedWeekday();
@@ -1844,9 +2446,17 @@
     $("#j-search").value = state.query;
     $(".j-search-row").hidden = !state.query;
     if (state.sidebar) root.dataset.sidebar = state.sidebar;
+    root.dataset.dayExpanded = String(state.dayExpanded);
+    if (state.dayExpanded) expandDay();
+    restoreViewPosition();
+    requestAnimationFrame(() => { $(".j-sidebar").scrollTop = state.sidebarScroll; });
     icons();
   }
   function select(k, keepView = false) {
+    rememberView();
+    const previousYear = state.year,
+      previousMonth = state.month,
+      previousView = state.view;
     clearTimeout(saveTimer);
     state.selected = k;
     const [y, m] = parse(k);
@@ -1854,8 +2464,21 @@
     state.month = m - 1;
     if (!keepView && state.view === "year") state.view = "month";
     root.dataset.mobileDetail = "true";
-    renderCalendar();
+    if (
+      root.dataset.screen !== "ideas" &&
+      previousYear === state.year && previousView === state.view &&
+      (state.view === "year" || previousMonth === state.month)
+    ) {
+      // Keep date buttons alive so the second click can produce a real dblclick.
+      $$(".j-calendar-pane [data-date]").forEach((button) => {
+        button.classList.toggle("is-selected", button.dataset.date === k);
+        button.classList.toggle("is-today", button.dataset.date === today);
+        button.setAttribute("aria-pressed", String(button.dataset.date === k));
+      });
+      $("#j-write-label").textContent = hasContent(current()) ? "继续记录" : "写一条记录";
+    } else renderCalendar();
     renderEditor();
+    $(".j-editor").scrollTop = 0;
     if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
       const pane = $(".j-editor");
       pane.getAnimations().forEach((a) => a.cancel());
@@ -1869,6 +2492,31 @@
     }
     persist();
   }
+  function expandDay() {
+    state.dayExpanded = true;
+    root.dataset.dayExpanded = "true";
+    root.dataset.mobileDetail = "true";
+    if (root.clientWidth < 881) root.dataset.sidebar = "closed";
+    const label = state.filter === "todo" ? "返回待办" : projectById(state.filter) || state.filter === "unbound" ? "返回想法总览" : state.filter === "search" ? "返回搜索结果" : state.filter === "important" ? "返回重要事项" : "返回日历";
+    $(".j-back").setAttribute("aria-label", label);
+    $(".j-back").title = label;
+    $(".j-back").focus({ preventScroll: true });
+    if (window.journalReady) persist();
+  }
+  function collapseDay() {
+    state.dayExpanded = false;
+    root.dataset.dayExpanded = "false";
+    root.dataset.mobileDetail = "false";
+    restoreViewPosition();
+    persist();
+  }
+  root.addEventListener("dblclick", (e) => {
+    const date = e.target.closest(".j-calendar-pane button[data-date]");
+    if (!date || !root.contains(date)) return;
+    e.preventDefault();
+    if (state.selected !== date.dataset.date) select(date.dataset.date, true);
+    expandDay();
+  });
   let dayTimer;
   function refreshToday(follow = true) {
     const now = new Date(),
@@ -1910,6 +2558,12 @@
         : typeof patch.body === "string"
           ? reconcileIdeas(existing, patch.body, edit)
           : copyIdeas(existing.ideas);
+    const bodyChanged = typeof patch.body === "string";
+    const mutation = bodyChanged ? textFormats.mutation(existing.body, patch.body, edit) : null;
+    const formats = patch.formats !== undefined
+      ? textFormats.normalize(patch.formats, patch.body?.length ?? existing.body.length)
+      : bodyChanged ? textFormats.replace(existing.formats, existing.body, patch.body, mutation, typingFormat)
+        : existing.formats;
     const r = {
       ...existing,
       ...patch,
@@ -1918,8 +2572,15 @@
       source: "手动记录",
       files: patch.files || existing.files,
     };
+    if (formats !== undefined) r.formats = formats;
     records[state.selected] = r;
     state.edits[state.selected] = r;
+    if (bodyChanged && typingPosition) typingPosition.at = mutation.newEnd;
+    if ((bodyChanged || patch.formats !== undefined) && !composing) {
+      const selection = editorSelection(), focused = document.activeElement === bodyField();
+      drawBody(r.body);
+      if (focused) setBodySelection(selection.start, selection.end);
+    }
     if (
       pickerTarget?.date === state.selected &&
       !r.ideas.some((p) => p.id === pickerTarget.id)
@@ -1941,6 +2602,15 @@
     }, 350);
   }
   root.addEventListener("click", (e) => {
+    const editorLink = e.target.closest("[data-editor-link]");
+    if (editorLink && root.contains(editorLink)) {
+      e.preventDefault();
+      if (document.activeElement === bodyField() && !e.ctrlKey && !e.metaKey) return;
+      if (editorLink.dataset.editorLink === "path") openLocalPath(editorLink.dataset.linkTarget);
+      else if (window.journalNative) window.journalNative.call("openExternal", {url:editorLink.dataset.linkTarget}).catch(error => notify(error.message));
+      else window.open(editorLink.dataset.linkTarget, "_blank", "noopener,noreferrer");
+      return;
+    }
     const link = e.target.closest("[data-external-url]");
     if (link && root.contains(link)) {
       e.preventDefault();
@@ -1979,8 +2649,19 @@
       openIdea(b.dataset.ideaDay, b.dataset.bindIdea, true);
       return;
     }
+    if (b.dataset.importantDate) {
+      select(b.dataset.importantDate);
+      expandDay();
+      return;
+    }
+    if (b.dataset.searchDate) {
+      if (b.dataset.searchIdea) openIdea(b.dataset.searchDate, b.dataset.searchIdea);
+      else select(b.dataset.searchDate);
+      expandDay();
+      return;
+    }
     if (b.dataset.date) {
-      select(b.dataset.date);
+      select(b.dataset.date, !!b.closest(".j-calendar-pane"));
       return;
     }
     if (b.dataset.month !== undefined) {
@@ -1991,12 +2672,7 @@
       return;
     }
     if (b.dataset.filter) {
-      overviewPage = 0;
-      state.filter = b.dataset.filter;
-      root.dataset.mobileDetail = "false";
-      renderCalendar();
-      if (root.clientWidth < 881) root.dataset.sidebar = "closed";
-      persist();
+      switchView(b.dataset.filter);
       return;
     }
     if (b.dataset.view) {
@@ -2012,7 +2688,23 @@
       if (f) openLocalPath(resourcePath(f));
       return;
     }
+    if (b.dataset.todoDate) {
+      if (b.dataset.todoIdea) openIdea(b.dataset.todoDate, b.dataset.todoIdea);
+      else select(b.dataset.todoDate);
+      expandDay(); return;
+    }
     const action = b.dataset.action;
+    if (action === "undo-action") { performUndo(); return; }
+    if (action === "toggle-format") { formatOpen = !formatOpen; updateFormatToolbar(); return; }
+    if (action === "idea-menu") {
+      const menu = $("#j-idea-menu"); menu.hidden = !menu.hidden;
+      b.setAttribute("aria-expanded", String(!menu.hidden)); return;
+    }
+    if (action === "bind-active-idea") {
+      const idea = ideaAtCaret(); closeIdeaMenu();
+      if (idea) openBindingPicker({date:state.selected,id:idea.id}); return;
+    }
+    if (action === "delete-idea") { deleteActiveIdea(); return; }
     if (action === "creator") {
       if (window.journalNative)
         window.journalNative
@@ -2031,6 +2723,7 @@
         overviewPage + (action === "idea-page-next" ? 1 : -1),
       );
       renderIdeaOverview();
+      $(".j-ideas-pane").scrollTop = 0; rememberView(); persist();
       return;
     }
     if (action === "choose-project") {
@@ -2093,7 +2786,12 @@
       if (current().body)
         notify("可直接继续编辑当天记录，或选择一个空白日期开始。");
     } else if (action === "back") {
-      root.dataset.mobileDetail = "false";
+      collapseDay();
+      const target = state.filter === "important"
+        ? root.querySelector(`[data-important-date="${state.selected}"]`) || $('[data-filter="important"]')
+        : state.filter === "search" ? root.querySelector(`[data-search-date="${state.selected}"]`) || $("#j-search")
+        : root.querySelector(`.j-calendar-pane [data-date="${state.selected}"]`);
+      target?.focus({ preventScroll: true });
     } else if (action === "sidebar") {
       const isClosed =
         root.dataset.sidebar === "closed" ||
@@ -2102,13 +2800,13 @@
       root.dataset.sidebar = state.sidebar;
       persist();
     } else if (action === "search") {
-      state.filter = "all";
-      renderCalendar();
+      switchView("search");
       $(".j-search-row").hidden = false;
       root.dataset.mobileDetail = "false";
       $("#j-search").focus();
     } else if (action === "close-search") {
       state.query = "";
+      switchView("all");
       $("#j-search").value = "";
       $(".j-search-row").hidden = true;
       renderCalendar();
@@ -2234,6 +2932,13 @@
     bodyField().addEventListener(type, updateIdeaUI);
   bodyField().addEventListener("keydown", (e) => {
     if (composing || e.isComposing || e.keyCode === 229) return;
+    if (e.target.closest("[data-editor-link]") && document.activeElement !== bodyField()) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && ["b", "i", "u"].includes(e.key.toLowerCase())) {
+      e.preventDefault();
+      const name = { b: "bold", i: "italic", u: "underline" }[e.key.toLowerCase()];
+      applyTextFormat({ [name]: !selectionStyle()[name] });
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && ["z", "y"].includes(e.key.toLowerCase())) {
       e.preventDefault();
       e.stopPropagation();
@@ -2297,11 +3002,16 @@
   });
   $("#j-search").addEventListener("input", () => {
     state.query = $("#j-search").value;
+    overviewPage = 0;
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(renderCalendar);
     persist();
   });
   root.addEventListener("keydown", (e) => {
+    const link = e.target.closest("[data-editor-link]");
+    if (e.key === "Enter" && link && document.activeElement !== bodyField()) {
+      e.preventDefault(); link.click(); return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
       e.preventDefault();
       if (composing) return;
@@ -2310,12 +3020,14 @@
         $("#j-save-status").textContent = "已保存到预览";
     }
     if (e.key === "Escape") {
-      if ($("#j-project-dialog").open || $("#j-schedule-dialog").open) return;
+      if (root.querySelector("dialog[open]")) return;
+      if (!$("#j-idea-menu").hidden || formatOpen) { closeIdeaMenu(); formatOpen = false; updateFormatToolbar(); return; }
       pickerTarget = null;
       $(".j-attach-form").hidden = true;
       $("#j-project-picker").hidden = true;
       $("#j-entry-project").setAttribute("aria-expanded", "false");
       root.dataset.mobileDetail = "false";
+      collapseDay();
     }
     const date = e.target.dataset.date;
     if (
@@ -2364,6 +3076,15 @@
       notify(error.message);
     }
   });
+  let navigationTimer;
+  for (const pane of $$(".j-sidebar, .j-calendar-pane, .j-ideas-pane")) pane.addEventListener("scroll", () => {
+    if (!window.journalReady || root.dataset.dayExpanded === "true" || pane.clientHeight === 0) return;
+    rememberView(); clearTimeout(navigationTimer);
+    navigationTimer = setTimeout(() => persist(), 300);
+  });
+  root.addEventListener("pointerdown", e => {
+    if (!e.target.closest("#j-idea-menu, #j-idea-menu-toggle")) closeIdeaMenu();
+  });
   restore(
     window.journalNative
       ? window.__journalBoot?.widgetState
@@ -2374,21 +3095,11 @@
     state.selected = today;
     state.year = Number(today.slice(0, 4));
     state.month = Number(today.slice(5, 7)) - 1;
-    for (const r of Object.values(records)) {
-      r.appointment = null;
-      r.schedule = "";
-    }
-    for (const [date, value] of Object.entries(
-      window.journalNative.schedules,
-    )) {
-      const s = normalizeSchedule(value),
-        r = records[date] || empty();
-      r.appointment = s;
-      r.schedule = `${s.time} · ${s.title}`;
-      if (!records[date]) r.important = s.important;
-      r.kind = "journal";
-      records[date] = r;
-      state.edits[date] = r;
+    for (const r of Object.values(records)) { r.appointments = []; r.appointment = null; r.schedule = ""; }
+    for (const [eventKey, value] of Object.entries(window.journalNative.schedules)) {
+      const event = normalizeSchedule(value), date = event.date || eventKey.split("/")[0];
+      event.id ||= "legacy-" + date;
+      setDayEvents(date, [...eventsFor(records[date]), event]);
     }
     $(".j-preview").hidden = true;
     $("[data-action=dock]").hidden = false;
@@ -2398,6 +3109,8 @@
   window.journalReady = true;
   document.querySelector(".j-load-status")?.remove();
   root.inert = false;
+  const restoreWarning=sessionStorage.getItem("restoreWarning");
+  if(restoreWarning){sessionStorage.removeItem("restoreWarning");notify("数据已恢复。"+restoreWarning);}
   refreshToday();
   window.addEventListener("focus", () => refreshToday());
   document.addEventListener("visibilitychange", () => {

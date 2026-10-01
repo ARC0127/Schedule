@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.IO;
+using System.IO.Compression;
 using System.Web.Script.Serialization;
 
 internal static class NativeModels
@@ -102,7 +103,62 @@ internal static class NativeModels
         catch (TargetInvocationException) { invalid = true; }
         Check(invalid && !File.Exists(Path.Combine(invalidDestination, "journal.json")), "Corrupt source was silently discarded");
         Check(Directory.GetFiles(Path.Combine(invalidDestination, "legacy-backups"), "*.json", SearchOption.AllDirectories).Length == 2, "Corrupt migration did not preserve originals");
-        Console.WriteLine("Native models passed: URL/dock, stale-write/reload/backup, shared storage path, MSIX discovery, complete migration, idempotence, conflicts and corrupt-source preservation.");
+        var archive=assembly.GetType("JournalArchive");
+        Func<string,MethodInfo> archiveMethod=name=>archive.GetMethod(name,BindingFlags.Static|BindingFlags.NonPublic);
+        var snapshot=archiveMethod("Snapshot").Invoke(null,new object[]{"manual"});
+        var snapshotId=(string)snapshot.GetType().GetProperty("id").GetValue(snapshot,null);
+        var original=File.ReadAllText(file);
+        var bundle=Path.Combine(profile,"portable.zip");
+        archiveMethod("ExportBundle").Invoke(null,new object[]{bundle});
+        var unpacked=(string)archiveMethod("ReadBundle").Invoke(null,new object[]{bundle});
+        Check(unpacked==original,"Portable backup did not preserve the complete envelope");
+        archiveMethod("Validate").Invoke(null,new object[]{unpacked});
+        File.WriteAllText(file,original.Replace("Recovered","Temporary change"));load.Invoke(null,null);
+        var preview=archiveMethod("Preview").Invoke(null,new object[]{snapshotId,null});
+        var token=(string)preview.GetType().GetProperty("token").GetValue(preview,null);
+        archiveMethod("Restore").Invoke(null,new object[]{token});
+        Check(File.ReadAllText(file).Contains("Recovered")&&!File.ReadAllText(file).Contains("Temporary change"),"Restore did not recover snapshot");
+        Check(Directory.GetFiles(Path.Combine(profile,"history"),"before-restore-*.json").Length==1,"Restore did not preserve current version");
+        var retained=File.ReadAllText(file);bool badArchive=false;
+        try{archiveMethod("Preview").Invoke(null,new object[]{null,"{\"WidgetState\":{\"privateContent\":{\"projects\":\"invalid\",\"edits\":{}}},\"Schedules\":{}}"});}catch(TargetInvocationException){badArchive=true;}
+        Check(badArchive&&File.ReadAllText(file)==retained,"Malformed import changed journal");
+        var set=assembly.GetType("WindowsReminders").GetMethod("SetSchedule",BindingFlags.Static|BindingFlags.NonPublic);
+        Func<string,object> newEvent=title=>set.Invoke(null,new object[]{new Dictionary<string,object>{{"date","2035-01-01"},{"id",null},{"schedule",new{title=title,time="09:00",at="2035-01-01T09:00:00",remindMinutes=-1,important=false,done=false}}}});
+        var event1=newEvent("First");var event2=newEvent("Second");
+        var eventId1=(string)event1.GetType().GetProperty("Id").GetValue(event1,null);var eventId2=(string)event2.GetType().GetProperty("Id").GetValue(event2,null);
+        Check(eventId1!=eventId2,"Event IDs collided");
+        set.Invoke(null,new object[]{new Dictionary<string,object>{{"date","2035-01-01"},{"id",eventId1},{"schedule",null}}});
+        var remaining=json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file));
+        Check(((Dictionary<string,object>)remaining["Schedules"]).Count==1,"Deleting one event affected another");
+        var links=assembly.GetType("TaskLinks");
+        var linkedStore=json.Deserialize("{\"WidgetState\":{\"privateContent\":{\"edits\":{\"2035-01-01\":{\"ideas\":[{\"id\":\"task\",\"done\":true}]}}}},\"Schedules\":{\"2035-01-02/link\":{\"Id\":\"link\",\"IdeaDate\":\"2035-01-01\",\"IdeaId\":\"task\",\"Done\":false}}}",assembly.GetType("Store"));
+        var linkedSchedules=(IDictionary)linkedStore.GetType().GetField("Schedules").GetValue(linkedStore);
+        var linkedEvent=linkedSchedules["2035-01-02/link"];
+        var apply=links.GetMethod("Apply",BindingFlags.Static|BindingFlags.NonPublic);
+        Check(((IList)apply.Invoke(null,new[]{linkedStore})).Count==1,"Cross-day linked schedule was not synchronized");
+        Check((bool)linkedEvent.GetType().GetProperty("Done").GetValue(linkedEvent,null),"Idea completion was not authoritative");
+        Check(((IList)apply.Invoke(null,new[]{linkedStore})).Count==0,"Unchanged linked schedules should not be rescheduled");
+        linkedEvent.GetType().GetProperty("Done").SetValue(linkedEvent,false,null);
+        bool rejectedCompletion=false;
+        try {links.GetMethod("Validate",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,new[]{linkedStore,linkedEvent});}
+        catch(TargetInvocationException e){rejectedCompletion=e.InnerException is ArgumentException;}
+        Check(rejectedCompletion,"Linked event overwrote idea completion");
+        linkedEvent.GetType().GetProperty("IdeaId").SetValue(linkedEvent,"missing",null);
+        apply.Invoke(null,new[]{linkedStore});
+        Check(linkedEvent.GetType().GetProperty("IdeaId").GetValue(linkedEvent,null)==null&&linkedSchedules.Count==1,"Missing idea should detach, not delete, its event");
+        var markdown=Path.Combine(profile,"markdown.zip");
+        var markdownRequest=new Dictionary<string,object>{{"documents",new[]{new Dictionary<string,object>{{"name","2026-10-01.md"},{"text","# Example\n![image](images/a.png)\n\\(x_\\tau\\)"}}}},{"images",new[]{new Dictionary<string,object>{{"name","a.png"},{"base64","AAEC"}}}}};
+        archiveMethod("ExportMarkdown").Invoke(null,new object[]{markdown,markdownRequest});
+        using(var zip=ZipFile.OpenRead(markdown)){
+            using(var reader=new StreamReader(zip.GetEntry("2026-10-01.md").Open()))Check(reader.ReadToEnd().Contains("\\(x_\\tau\\)"),"Markdown export changed TeX");
+            using(var stream=zip.GetEntry("images/a.png").Open())Check(stream.ReadByte()==0&&stream.ReadByte()==1&&stream.ReadByte()==2,"Image bytes changed in Markdown ZIP");
+        }
+        var mdDir=Path.Combine(profile,"markdown-import");Directory.CreateDirectory(Path.Combine(mdDir,"images"));
+        File.WriteAllBytes(Path.Combine(mdDir,"images/a.png"),new byte[]{0,1,2});
+        var mdFile=Path.Combine(mdDir,"entry.md");File.WriteAllText(mdFile,"![valid](images/a.png)\n![outside](../outside.png)\n\\(x\\)");
+        var md=archiveMethod("ReadMarkdown").Invoke(null,new object[]{mdFile});
+        Check(((IList)md.GetType().GetProperty("images").GetValue(md,null)).Count==1,"Markdown import did not enforce local image directory");
+        Console.WriteLine("Native models passed: existing storage/MSIX regressions; complete ZIP roundtrip, snapshot preview/restore, pre-restore copy, invalid import rejection and independent multiple events.");
         return 0;
     }
 }

@@ -13,6 +13,7 @@
       ><strong>Schedule</strong><span class="j-preview">浏览器预览</span>
     </div>
     <div class="j-window-tools">
+      <button type="button" class="j-icon" data-action="data" aria-label="数据与备份" title="备份、恢复与导入导出"><i data-lucide="archive" aria-hidden="true"></i></button>
       <button
         type="button"
         class="j-icon"
@@ -49,6 +50,7 @@
     ></button>
     <aside id="j-sidebar" class="j-sidebar" aria-label="导航">
       <div class="j-navgroup">
+        <button type="button" class="j-nav" data-filter="todo"><i data-lucide="circle-check" aria-hidden="true"></i><span>待办</span><span id="j-todo-count"></span></button>
         <button type="button" class="j-nav is-active" data-filter="all">
           <i data-lucide="calendar-days" aria-hidden="true"></i
           ><span>日历</span>
@@ -156,7 +158,7 @@
     <section class="j-ideas-pane" aria-label="项目想法总览">
       <div class="j-overview-heading">
         <div>
-          <div class="j-eyebrow">想法总览 · 全部日期</div>
+          <div class="j-eyebrow" id="j-overview-eyebrow">想法总览 · 全部日期</div>
           <h1 id="j-overview-title"></h1>
         </div>
         <div id="j-overview-tools"></div>
@@ -172,6 +174,7 @@
           class="j-icon j-back"
           data-action="back"
           aria-label="返回日历"
+          title="返回日历"
         >
           <i data-lucide="arrow-left" aria-hidden="true"></i>
         </button>
@@ -198,6 +201,7 @@
         <i data-lucide="clock-3" aria-hidden="true"></i><span>添加日程</span
         ><i data-lucide="plus" aria-hidden="true"></i></button
       ><small id="j-schedule-status" hidden></small>
+      <div id="j-schedule-list" aria-label="当天日程"></div>
       <div class="j-entry-meta">
         <button
           type="button"
@@ -254,18 +258,33 @@
           data-tooltip="将当前行或选中文字设为想法；再次点击取消"
         >
           <i data-lucide="list" aria-hidden="true"></i>想法</button
-        ><button
+        ><button type="button" class="j-icon" data-action="toggle-format" aria-label="文字格式" aria-expanded="false" title="文字格式"><i data-lucide="type" aria-hidden="true"></i></button><button type="button" class="j-icon" id="j-idea-menu-toggle" data-action="idea-menu" aria-label="当前想法操作" aria-expanded="false" aria-controls="j-idea-menu" title="当前想法操作" hidden><i data-lucide="ellipsis" aria-hidden="true"></i></button><span>Enter 换行 · ⇧ Enter 添加想法</span>
+      </div>
+      <div id="j-idea-menu" class="j-idea-menu" hidden>
+        <button type="button" data-action="bind-active-idea">关联项目</button><button
           type="button"
           class="j-idea-toggle"
           id="j-complete-idea"
           data-action="complete-idea"
           aria-pressed="false"
-          data-tooltip="光标在想法内时单按 Ctrl，或 Ctrl 个想法击想法，切换完成状态"
+          data-tooltip="光标在想法内时单按 Ctrl，或 Ctrl 加单击想法，切换完成状态"
           hidden
         >
           <i data-lucide="check" aria-hidden="true"></i
           ><span>完成</span></button
-        ><span>Enter 换行 · ⇧ Enter 添加想法</span>
+        ><button type="button" class="j-idea-toggle" id="j-idea-settings" data-action="idea-settings" hidden title="当前想法的任务状态、重要标记与截止日期"><i data-lucide="sliders-horizontal" aria-hidden="true"></i><span>设置</span></button><button type="button" data-action="idea-reminder">关联日程</button><button type="button" data-action="delete-idea" class="j-delete-idea">删除想法</button>
+      </div>
+      <div class="j-format-tools" role="group" aria-label="文字格式" hidden>
+        <select id="j-font-size" aria-label="字号" title="字号">
+          <option value="">字号</option><option>12</option><option>13</option><option>14</option><option>16</option><option>18</option><option>20</option><option>24</option><option>28</option><option>32</option>
+        </select>
+        <button type="button" class="j-icon" data-format="bold" aria-label="粗体" aria-pressed="false" title="粗体 · Ctrl+B"><i data-lucide="bold" aria-hidden="true"></i></button>
+        <button type="button" class="j-icon" data-format="italic" aria-label="斜体" aria-pressed="false" title="斜体 · Ctrl+I"><i data-lucide="italic" aria-hidden="true"></i></button>
+        <button type="button" class="j-icon" data-format="underline" aria-label="下划线" aria-pressed="false" title="下划线 · Ctrl+U"><i data-lucide="underline" aria-hidden="true"></i></button>
+        <select id="j-text-color" aria-label="文字颜色" title="文字颜色">
+          <option value="">默认色</option><option value="#252a2b">墨黑</option><option value="#286746">墨绿</option><option value="#b34848">柔红</option><option value="#356ca1">蓝色</option><option value="#805b99">紫色</option><option value="#657060">灰绿</option>
+        </select>
+        <button type="button" class="j-icon" data-format="clear" aria-label="清除格式" title="清除格式"><i data-lucide="eraser" aria-hidden="true"></i></button>
       </div>
       <div class="j-project-link-hint" id="j-project-link-hint" hidden></div>
       <div
@@ -416,9 +435,11 @@
         </select>
       </div>
     </div>
+    <label for="j-schedule-idea">关联想法</label><select id="j-schedule-idea"><option value="">独立日程</option></select>
     <label class="j-schedule-check"
       ><input id="j-schedule-important" type="checkbox" />标为重要</label
     >
+    <label class="j-schedule-check"><input id="j-schedule-done" type="checkbox" /><span id="j-schedule-done-label">已完成（取消提醒）</span></label>
     <p id="j-notification-status" role="status"></p>
     <div id="j-notification-actions" hidden>
       <button
@@ -459,6 +480,31 @@
         保存
       </button>
     </div>
+  </dialog>
+  <dialog id="j-idea-dialog" class="j-feature-dialog" aria-labelledby="j-idea-dialog-title">
+    <h2 id="j-idea-dialog-title">想法设置</h2>
+    <p id="j-idea-dialog-preview"></p>
+    <label for="j-idea-state">状态</label><select id="j-idea-state"><option value="note">普通想法</option><option value="todo">待办</option><option value="done">已完成</option></select>
+    <label><input id="j-idea-important" type="checkbox" /> 标为重要</label>
+    <label for="j-idea-due">截止日期（可留空）</label><input id="j-idea-due" type="date" />
+    <small>待办可标为重要或关联日程。转为普通想法会清除截止日期并解除日程关联，保留独立日程。</small>
+    <div class="j-dialog-actions"><button type="button" class="j-small-button" data-action="cancel-idea-settings">取消</button><button type="button" class="j-small-button solid" data-action="save-idea-settings">保存</button></div>
+  </dialog>
+  <dialog id="j-data-dialog" class="j-feature-dialog" aria-labelledby="j-data-title">
+    <div class="j-picker-heading"><h2 id="j-data-title">数据与备份</h2><button type="button" class="j-icon" data-action="close-data" aria-label="关闭数据与备份"><i data-lucide="x" aria-hidden="true"></i></button></div>
+    <p>保留最近 30 个每日快照。手动备份与恢复前备份会一直保留。</p>
+    <div class="j-data-actions">
+      <button type="button" class="j-small-button" data-action="snapshot">立即备份</button>
+      <button type="button" class="j-small-button" data-action="export-backup">导出完整备份</button>
+      <button type="button" class="j-small-button" data-action="import-backup">导入完整备份</button>
+      <button type="button" class="j-small-button" data-action="export-markdown">导出 Markdown 与图片</button>
+      <button type="button" class="j-small-button" data-action="import-markdown">导入 Markdown 到当前日期</button>
+    </div>
+    <small>完整备份包含图片、项目、格式和日程；关联文件保留原路径。Markdown 导入会追加到当前日期。</small>
+    <div id="j-history-list"></div>
+    <div id="j-history-preview" hidden></div>
+    <button type="button" class="j-small-button solid" data-action="restore-history" id="j-restore-history" hidden>确认恢复此版本（替换当前数据）</button>
+    <p id="j-data-status" role="status"></p>
   </dialog>
   <div id="j-toast" class="j-toast" role="status" hidden></div>
 </div>

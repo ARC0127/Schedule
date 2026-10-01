@@ -52,18 +52,20 @@
     if (end < text.length) result.push({ kind: "text", text: text.slice(end) });
     return result;
   }
-  function textParts(text) {
+  function textParts(text, withOffsets = false) {
     const result = [];
+    const add = (part, start, end, textStart = start) =>
+      result.push(withOffsets ? { ...part, start, end, textStart } : part);
     const pattern =
       /([\uE000-\uF8FF])|\[([^\]\n]+)\]\((https?:\/\/[^\s<>"]+)\)|"((?:[a-z]:[\\/]|\\\\)[^"\r\n]+)"|(https?:\/\/[^\s<>"\uE000-\uF8FF]+)|((?:[a-z]:[\\/]|\\\\)[^\s<>"\uE000-\uF8FF]+)/gi;
     let end = 0;
     for (const match of String(text).matchAll(pattern)) {
       if (match.index > end)
-        result.push({ kind: "text", text: text.slice(end, match.index) });
+        add({ kind: "text", text: text.slice(end, match.index) }, end, match.index);
       end = match.index + match[0].length;
-      if (match[1]) result.push({ kind: "image", token: match[1] });
+      if (match[1]) add({ kind: "image", token: match[1] }, match.index, end);
       else if (match[4] || match[6])
-        result.push({ kind: "path", text: match[4] || match[6] });
+        add({ kind: "path", text: match[4] || match[6] }, match.index, end, match.index + (match[4] ? 1 : 0));
       else {
         let url = match[3] || match[5],
           suffix = "";
@@ -86,20 +88,28 @@
             !["http:", "https:"].includes(parsed.protocol)
           )
             throw Error("Invalid web URL");
-          result.push({ kind: "url", text: match[2] || url, url });
-          if (suffix) result.push({ kind: "text", text: suffix });
+          add({ kind: "url", text: match[2] || url, url }, match.index, end - suffix.length, match.index + (match[2] ? 1 : 0));
+          if (suffix) add({ kind: "text", text: suffix }, end - suffix.length, end);
         } catch {
-          result.push({ kind: "text", text: match[0] });
+          add({ kind: "text", text: match[0] }, match.index, end);
         }
       }
     }
-    if (end < text.length) result.push({ kind: "text", text: text.slice(end) });
+    if (end < text.length) add({ kind: "text", text: text.slice(end) }, end, text.length);
     return result;
   }
-  const parts = (text) =>
-    mathParts(text).flatMap((part) =>
-      part.kind === "math" ? [part] : textParts(part.text),
-    );
+  const parts = (text, withOffsets = false) => {
+    let offset = 0;
+    return mathParts(text).flatMap((part) => {
+      const result = part.kind === "math"
+        ? [withOffsets ? { ...part, start: offset, end: offset + part.text.length, textStart: offset } : part]
+        : textParts(part.text, withOffsets).map(p => withOffsets
+          ? { ...p, start: p.start + offset, end: p.end + offset, textStart: p.textStart + offset }
+          : p);
+      offset += part.text.length;
+      return result;
+    });
+  };
   const api = { parts, mathParts, ideaRanges };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ScheduleContent = api;

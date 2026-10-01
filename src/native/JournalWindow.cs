@@ -22,6 +22,8 @@ internal class JournalWindow : Form
     bool ready, closing, minimizing;
     bool backgroundLaunch, initializationStarted, transitionPending;
     string initialMode;
+    LocalApi api;
+    readonly Dictionary<string,TaskCompletionSource<string>> apiReplies=new Dictionary<string,TaskCompletionSource<string>>();
     readonly NotifyIcon tray = new NotifyIcon();
     readonly ContextMenuStrip trayMenu = new ContextMenuStrip();
     readonly ToolStripMenuItem dockItem = new ToolStripMenuItem();
@@ -30,9 +32,10 @@ internal class JournalWindow : Form
     FormWindowState expandedState=FormWindowState.Normal;
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     static extern bool SetForegroundWindow(IntPtr window);
-    public JournalWindow(bool startInBackground=false)
+    public JournalWindow(bool startInBackground=false,bool apiHost=false)
     {
-        backgroundLaunch=startInBackground;initialMode=startInBackground?"dock":"main";
+        backgroundLaunch=startInBackground;initialMode=apiHost?"tray":startInBackground?"dock":"main";
+        AutoScaleDimensions=new SizeF(96f,96f);AutoScaleMode=AutoScaleMode.Dpi;
         Text="Schedule"; Width=1160; Height=860; MinimumSize=new Size(780,560); StartPosition=FormStartPosition.CenterScreen;
         Icon=new Icon(Path.Combine(Program.AppDir,"schedule.ico"));
         tray.Icon=Icon;tray.Text="Schedule";tray.ContextMenuStrip=trayMenu;
@@ -43,7 +46,7 @@ internal class JournalWindow : Form
         trayMenu.Opening+=delegate{RefreshTrayMenu();};
         tray.MouseClick+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left)OpenActivation();};
         Controls.Add(web);
-        FormClosed+=delegate{tray.Visible=false;tray.Dispose();trayMenu.Dispose();activationTimer.Dispose();if(dock!=null)dock.Dispose();};
+        FormClosed+=delegate{if(api!=null)api.Dispose();tray.Visible=false;tray.Dispose();trayMenu.Dispose();activationTimer.Dispose();if(dock!=null)dock.Dispose();};
         Resize+=delegate {
             if(WindowState!=FormWindowState.Minimized){expandedState=WindowState;return;}
             if(!ready||closing||minimizing)return;minimizing=true;
@@ -111,19 +114,35 @@ internal class JournalWindow : Form
             var op=Convert.ToString(req["method"]);object result;
             if(op=="loadState") {
                 Program.Load();
-                result=new {widgetState=Program.Data.WidgetState,schedules=Program.Data.Schedules};
+                result=new {widgetState=Program.Data.WidgetState,schedules=Program.Data.Schedules,processId=System.Diagnostics.Process.GetCurrentProcess().Id,appDirectory=Program.AppDir,dataDirectory=Program.DataDir};
             } else if(op=="uiReady") {
                 ready=true;backgroundLaunch=false;tray.Visible=true;RefreshTrayMenu();activationTimer.Start();
+                if(api==null)api=new LocalApi(this);
                 if(initialMode=="dock"&&Program.ActivationDate==null)ShowDock();else if(initialMode=="tray"&&Program.ActivationDate==null)HideToTray();else OpenActivation();
                 initialMode="main";
                 result=new {ready=true};
+            } else if(op=="apiResult") {
+                var payload=(Dictionary<string,object>)req["payload"];TaskCompletionSource<string> completion;
+                if(apiReplies.TryGetValue(Convert.ToString(payload["requestId"]),out completion))completion.TrySetResult(Program.Json.Serialize(payload["response"]));
+                result=new{received=true};
             } else if(op=="saveState") {
                 if(!ready)throw new InvalidOperationException("日志尚未加载完成，未保存空白界面。");
                 object prior=Program.Data.WidgetState;
+                var priorSchedules=Program.Json.Deserialize<Dictionary<string,Schedule>>(Program.Json.Serialize(Program.Data.Schedules));
                 Program.Data.WidgetState=req["payload"];
-                try {Program.Save();} catch {Program.Data.WidgetState=prior;throw;}
-                if(dock!=null)dock.RefreshToday();result=new {saved=true};
+                var changed=TaskLinks.Apply(Program.Data);
+                try {Program.Save();} catch {Program.Data.WidgetState=prior;Program.Data.Schedules=priorSchedules;throw;}
+                foreach(var key in changed)WindowsReminders.Reconcile(key,Program.Data.Schedules[key]);
+                if(changed.Count>0)Program.Save();
+                if(dock!=null)dock.RefreshToday();result=new {saved=true,schedules=Program.Data.Schedules};
             } else if(op=="saveSchedule") result=WindowsReminders.SetSchedule((Dictionary<string,object>)req["payload"]);
+            else if(op=="listHistory")result=JournalArchive.List();
+            else if(op=="snapshot")result=JournalArchive.Snapshot("manual");
+            else if(op=="previewHistory")result=JournalArchive.Preview(Convert.ToString(((Dictionary<string,object>)req["payload"])["id"]));
+            else if(op=="restoreHistory")result=JournalArchive.Restore(Convert.ToString(((Dictionary<string,object>)req["payload"])["token"]));
+            else if(op=="importBackup")result=JournalArchive.PickImport();
+            else if(op=="exportData")result=JournalArchive.Export((Dictionary<string,object>)req["payload"]);
+            else if(op=="importMarkdown")result=JournalArchive.PickMarkdown();
             else if(op=="inspectPath"||op=="openPath") {
                 var path=Convert.ToString(((Dictionary<string,object>)req["payload"])["path"]);
                 var entry=await Task.Run(()=>LocalPaths.Inspect(path));
@@ -154,6 +173,17 @@ internal class JournalWindow : Form
         minimizing=false;transitionPending=false;
         if(dock==null||dock.IsDisposed)dock=new DockWindow(this);
         Hide();dock.Reveal();tray.Visible=true;RefreshTrayMenu();
+    }
+    internal async Task<string> ExecuteApi(string request)
+    {
+        if(!ready||closing||transitionPending)throw new InvalidOperationException("Schedule is loading or closing; retry after it is ready.");
+        object parsed=Program.Json.DeserializeObject(request);
+        string id=Guid.NewGuid().ToString("N");var completion=new TaskCompletionSource<string>();apiReplies[id]=completion;
+        try {
+            await web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('journal:api',{detail:"+Program.Json.Serialize(new{requestId=id,request=parsed})+"}))");
+            if(await Task.WhenAny(completion.Task,Task.Delay(55000))!=completion.Task)throw new TimeoutException("API response timed out; inspect state before retrying a write.");
+            return await completion.Task;
+        } finally {apiReplies.Remove(id);}
     }
     internal async void ToggleDockIdea(string date,string id)
     {

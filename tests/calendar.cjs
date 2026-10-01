@@ -66,6 +66,9 @@ async function launch() {
 }
 async function bootAt(time) {
   await page.clock.setSystemTime(new Date(time));
+  // Settle the 300 ms navigation-scroll debounce before replacing the document.
+  await page.clock.runFor(350);
+  await page.evaluate(() => window.journalFlush());
   await page.reload();
   await page.waitForFunction(() => window.journalReady);
   await page.evaluate(() => document.activeElement?.blur());
@@ -97,6 +100,37 @@ async function exit() {
   try {
     await launch();
     await page.clock.install({ time: new Date("2026-09-30T23:59:50+08:00") });
+    for (const [start, target, monthLabel] of [
+      ["2026-09-15", "2026-08-31", "八月"],
+      ["2026-09-30", "2026-10-01", "十月"],
+      ["2026-12-15", "2027-01-01", "一月"],
+      ["2027-01-15", "2026-12-31", "十二月"],
+      ["2028-03-15", "2028-02-29", "二月"],
+    ]) {
+      await bootAt(`${start}T12:00:00+08:00`);
+      const outside = page.locator(`button.j-outside[data-date="${target}"]`);
+      assert.equal(await outside.count(), 1);
+      assert.ok((await outside.getAttribute("aria-label")).includes("切换到该月"));
+      await outside.click();
+      const [year, month, day] = target.split("-").map(Number);
+      await expectDate(`${month} 月 ${day} 日`);
+      assert.equal(await page.locator("#j-month-label").innerText(), monthLabel);
+      assert.equal(await page.locator("#j-year-label").innerText(), String(year));
+      assert.equal(await page.locator(`.j-day.is-selected:not(.j-outside)`).getAttribute("data-date"), target);
+      await page.evaluate(() => window.journalFlush());
+      const content = JSON.parse(fs.readFileSync(file, "utf8")).WidgetState.privateContent;
+      assert.equal(content.selected, target);
+      assert.equal(content.month, month - 1);
+      assert.equal(content.year, year);
+      for (const [field, value] of Object.entries(entry))
+        assert.deepEqual(content.edits["2026-09-30"][field], value);
+    }
+    cases.push("adjacent dates navigate backward/forward across months, years and leap February without altering records");
+    await page.locator('.j-day.is-selected').dblclick();
+    assert.equal(await page.locator('#journal-ui').getAttribute('data-day-expanded'), 'true');
+    await page.locator('.j-back').click();
+    assert.equal(await page.locator('#journal-ui').getAttribute('data-day-expanded'), 'false');
+    cases.push("selected day still expands on double-click after switching month");
     await bootAt("2026-09-30T23:59:50+08:00");
     await expectDate("9 月 30 日");
     await page.clock.runFor(10100);
