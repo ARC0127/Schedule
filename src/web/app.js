@@ -32,21 +32,21 @@
           "'": "&#39;",
         })[c],
     );
-  const today = new Date().toLocaleDateString("sv-SE"),
-    names = [
-      "一月",
-      "二月",
-      "三月",
-      "四月",
-      "五月",
-      "六月",
-      "七月",
-      "八月",
-      "九月",
-      "十月",
-      "十一月",
-      "十二月",
-    ];
+  let today = new Date().toLocaleDateString("sv-SE");
+  const names = [
+    "一月",
+    "二月",
+    "三月",
+    "四月",
+    "五月",
+    "六月",
+    "七月",
+    "八月",
+    "九月",
+    "十月",
+    "十一月",
+    "十二月",
+  ];
   const empty = () => ({
     title: "",
     body: "",
@@ -1623,8 +1623,12 @@
     }
   });
   window.addEventListener("journal:open-date", (e) => {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(e.detail)) select(e.detail);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(e.detail)) {
+      refreshToday(false);
+      select(e.detail);
+    }
   });
+  window.addEventListener("journal:resume", () => refreshToday());
   window.addEventListener("journal:toggle-idea", (e) => {
     const d = e.detail;
     if (d && typeof d.date === "string" && typeof d.id === "string")
@@ -1794,14 +1798,18 @@
         .join("");
     icons();
   }
-  function renderEditor() {
+  function renderSelectedWeekday() {
     const [y, m, d] = parse(state.selected),
-      r = current(),
       date = new Date(y, m - 1, d);
     $("#j-selected-weekday").textContent =
       ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"][
         date.getDay()
       ] + (state.selected === today ? " · 今天" : "");
+  }
+  function renderEditor() {
+    const [, m, d] = parse(state.selected),
+      r = current();
+    renderSelectedWeekday();
     $("#j-selected-date").textContent = `${m} 月 ${d} 日`;
     $("#j-entry-title").value = r.title;
     $("#j-entry-body").value = r.body;
@@ -1838,13 +1846,13 @@
     if (state.sidebar) root.dataset.sidebar = state.sidebar;
     icons();
   }
-  function select(k) {
+  function select(k, keepView = false) {
     clearTimeout(saveTimer);
     state.selected = k;
     const [y, m] = parse(k);
     state.year = y;
     state.month = m - 1;
-    if (state.view === "year") state.view = "month";
+    if (!keepView && state.view === "year") state.view = "month";
     root.dataset.mobileDetail = "true";
     renderCalendar();
     renderEditor();
@@ -1860,6 +1868,40 @@
       );
     }
     persist();
+  }
+  let dayTimer;
+  function refreshToday(follow = true) {
+    const now = new Date(),
+      next = now.toLocaleDateString("sv-SE");
+    clearTimeout(dayTimer);
+    // Check at local midnight, and recover from clock changes or suspended timers.
+    dayTimer = setTimeout(
+      refreshToday,
+      Math.min(
+        60000,
+        new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - now + 25,
+      ),
+    );
+    if (next === today) return;
+    const previous = today,
+      [year, month] = parse(previous),
+      editing = composing || root.querySelector("dialog[open]") ||
+        (root.contains(document.activeElement) &&
+          document.activeElement.closest(
+            'input, textarea, [contenteditable="true"]',
+          ));
+    today = next;
+    if (
+      follow && !editing && state.selected === previous &&
+      state.year === year && state.month === month - 1
+    ) {
+      const mobileDetail = root.dataset.mobileDetail;
+      select(today, true);
+      root.dataset.mobileDetail = mobileDetail;
+    } else {
+      renderCalendar();
+      renderSelectedWeekday();
+    }
   }
   function changeRecord(patch, edit) {
     const existing = current(),
@@ -2030,6 +2072,7 @@
       renderCalendar();
       persist();
     } else if (action === "today") {
+      refreshToday(false);
       state.view = "month";
       select(today);
       root.dataset.mobileDetail = "false";
@@ -2327,6 +2370,10 @@
       : window.openai?.widgetState,
   );
   if (window.journalNative) {
+    // A cold launch starts at today's date; opening a dated reminder overrides it.
+    state.selected = today;
+    state.year = Number(today.slice(0, 4));
+    state.month = Number(today.slice(5, 7)) - 1;
     for (const r of Object.values(records)) {
       r.appointment = null;
       r.schedule = "";
@@ -2351,6 +2398,11 @@
   window.journalReady = true;
   document.querySelector(".j-load-status")?.remove();
   root.inert = false;
+  refreshToday();
+  window.addEventListener("focus", () => refreshToday());
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshToday();
+  });
   window.addEventListener("openai:set_globals", (e) => {
     if (window.journalNative) return;
     const s = e.detail?.globals?.widgetState;

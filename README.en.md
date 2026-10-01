@@ -55,6 +55,8 @@ HTTP/HTTPS URLs and Markdown web links are clickable in project overviews. Windo
 
 Pasting multiline text or equations keeps them in the current idea, including blank lines. Use Shift+Enter to add the next idea. Math renders offline; saving and copying retain the original TeX source.
 
+The desktop app opens today's date on startup. Midnight, tray restoration, and wake-up refresh the current day. An idle view of today follows the new day; active editing and historical-date browsing stay on their selected date. The Today button always reads the current system date.
+
 ## Your data stays on your computer
 
 Data is stored in `%USERPROFILE%\.schedule\journal.json`, including journal text, ideas, project bindings, images, events, and floating-window position. Linked files remain at their original paths. Saves use a temporary file and atomic replacement; `.bak` holds the preceding version.
@@ -91,6 +93,7 @@ npm run test:native
 npm run test:overview
 npm run test:restart
 npm run test:math
+npm run test:calendar
 py -3 scripts/test_native_models.py
 ```
 

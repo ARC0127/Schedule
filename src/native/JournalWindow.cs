@@ -167,5 +167,6 @@ internal class JournalWindow : Form
         Show();WindowState=restoreState;BringToFront();Activate();SetForegroundWindow(Handle);
         if(dock!=null)dock.Hide();minimizing=false;
         if(Program.ActivationDate!=null){await web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('journal:open-date',{detail:"+Program.Json.Serialize(Program.ActivationDate)+"}))");Program.ActivationDate=null;}
+        else await web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new Event('journal:resume'))");
     }
 }

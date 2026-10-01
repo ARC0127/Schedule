@@ -55,6 +55,8 @@
 
 粘贴多行文字或公式不会自动拆分想法。换行与空行仍属于当前想法，使用 Shift+Enter 才添加下一个想法。公式在本机离线渲染，保存和复制保留原始 TeX。
 
+桌面版启动时打开当天。跨过午夜、从托盘恢复或唤醒后会更新“今天”；停留在当天且未输入时自动进入新一天，正在编辑或浏览历史日期时保留当前日期。点击“今天”随时返回系统当前日期。
+
 ## 你的数据，留在本机
 
 数据保存在 `%USERPROFILE%\.schedule\journal.json`，包含正文、想法、项目关系、图片、日程与悬浮位置。关联的文件仍留在原路径。保存采用临时文件和原子替换，`.bak` 保存上一版。界面每次加载都会重新读取文件，读取失败时禁止编辑。保存前检查文件是否已被修改，过期状态不会覆盖磁盘内容；未变化的保存不会轮换备份。
@@ -91,6 +93,7 @@ npm run test:native
 npm run test:overview
 npm run test:restart
 npm run test:math
+npm run test:calendar
 py -3 scripts/test_native_models.py
 ```
 
