@@ -1210,6 +1210,42 @@
   justify-content: space-between;
   gap: 10px;
 }
+#journal-ui .j-project-compose {
+  margin-top: 24px;
+  border-top: 1px solid #edf0e9;
+  padding-top: 18px;
+}
+#journal-ui .j-project-compose-meta {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #929b8c;
+  font-size: 11px;
+}
+#journal-ui #j-project-compose-body {
+  min-height: 220px;
+  padding: 16px 0;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.9;
+  cursor: text;
+}
+#journal-ui #j-project-compose-body:empty::before {
+  content: attr(data-placeholder);
+  color: #a0a999;
+  pointer-events: none;
+}
+#journal-ui #j-project-compose-body img {
+  display: inline-block;
+  max-width: 100%;
+  max-height: 320px;
+  vertical-align: middle;
+  border-radius: 6px;
+}
+#journal-ui #j-project-compose-status { color: #929b8c; font-size: 11px; }
 #journal-ui .j-overview-heading h1 {
   font-size: 25px;
   overflow-wrap: anywhere;

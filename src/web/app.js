@@ -117,6 +117,7 @@
     );
   }
   let projectDialog = { id: null, link: false };
+  let projectComposer = null, projectComposing = false;
   let newIdeaProjects = [],
     pickerTarget = null,
     overviewPage = 0;
@@ -699,6 +700,14 @@
     return token;
   }
   function repaintImages() {
+    for (const node of $("#j-project-compose-body").querySelectorAll("[data-image-token]")) {
+      const asset = imageAssets.get(node.dataset.imageToken);
+      if (asset?.src && node.tagName !== "IMG" && !node.querySelector("img")) {
+        const img = document.createElement("img");
+        img.src = asset.src;
+        img.alt = asset.name; node.replaceChildren(img);
+      }
+    }
     renderIdeaOverview();
     if (composing) return;
     const t = bodyField(),
@@ -1203,6 +1212,7 @@
     });
   }
   function switchView(filter) {
+    finishProjectComposer();
     rememberView();
     root.dataset.dayExpanded = "false"; state.dayExpanded = false;
     state.filter = filter;
@@ -1331,6 +1341,11 @@
     const searching = state.filter === "search";
     const active = state.filter === "todo" || searching || important || state.filter === "unbound" || !!projectById(state.filter);
     root.dataset.screen = active ? "ideas" : "calendar";
+    const canCompose = !!projectById(state.filter) || state.filter === "unbound";
+    $("#j-project-compose").hidden = !canCompose;
+    $("#j-project-compose-label").textContent = projectComposer
+      ? `${projectComposer.date} · ${projectById(projectComposer.project)?.name || "未绑定"}`
+      : `今天 · ${projectById(state.filter)?.name || "未绑定"}`;
     const searchRow = $(".j-search-row"), searchHost = searching ? $(".j-ideas-pane") : $(".j-calendar-pane");
     if (searchRow.parentElement !== searchHost) searchHost.prepend(searchRow);
     searchRow.hidden = !searching;
@@ -1360,6 +1375,7 @@
     let html = "",
       lastDate = "";
     for (const { date, idea: p } of shown) {
+      if (projectComposer?.date === date && projectComposer.id === p.id) continue;
       if (date !== lastDate) {
         if (lastDate) html += overviewResources(lastDate) + "</section>";
         html += `<section class="j-idea-day"><div class="j-idea-day-heading">${esc(date.replace(/-/g, " / "))}</div>`;
@@ -1374,9 +1390,88 @@
     if (lastDate) html += overviewResources(lastDate) + "</section>";
     $("#j-overview-list").innerHTML =
       html ||
-      `<div class="j-empty-ideas">${project ? "这个项目还没有想法" : "所有想法都已整理好"}<br>${project ? "先在右侧选择新想法的项目，再开始记录。" : "新建未绑定的想法会出现在这里。"}</div>`;
+      (canCompose ? "" : '<div class="j-empty-ideas">暂无想法</div>');
     icons();
   }
+  function finishProjectComposer() {
+    // Input events already update the shared record. Clearing only the editor
+    // leaves saved ideas, image loads and other projects' records untouched.
+    projectComposer = null;
+    projectComposing = false;
+    $("#j-project-compose-body").replaceChildren();
+    $("#j-project-compose-status").textContent = "自动保存到今天";
+  }
+  function saveProjectComposer() {
+    const field = $("#j-project-compose-body"), text = serializeEditor(field).replace(/^• ?/, "");
+    if (!projectComposer && !text.trim()) return;
+    if (!projectComposer) {
+      if (!projectById(state.filter) && state.filter !== "unbound") return;
+      projectComposer = {date: new Date().toLocaleDateString("sv-SE"), project: state.filter, id: makeIdeaId()};
+    }
+    const {date, project, id} = projectComposer;
+    const record = records[date] || empty(), ideas = copyIdeas(record.ideas);
+    let body = record.body, formats = record.formats, idea = ideas.find(p => p.id === id);
+    if (idea) {
+      const range = ideaRanges(body).find(p => p.offset === idea.offset);
+      const start = range.offset + 2;
+      const end = start + projectComposer.text.length;
+      const next = body.slice(0, start) + text + body.slice(end);
+      formats = textFormats.replace(formats, body, next, {start, end, newEnd: start + text.length});
+      for (const other of ideas) if (other.offset >= end && other.id !== id) other.offset += text.length - (end - start);
+      body = next;
+    } else {
+      const prefix = body && !body.endsWith("\n") ? "\n" : "";
+      idea = {id, offset: body.length + prefix.length, done: false, projectIds: projectById(project) ? [project] : []};
+      body += prefix + "• " + text; ideas.push(idea);
+    }
+    const next = {...record, body, ideas, source: "手动记录", kind: "journal"};
+    projectComposer.text = text;
+    if (formats !== undefined) next.formats = formats;
+    records[date] = next; state.edits[date] = next; bodyHistory.delete(date);
+    if (state.selected === date) { bodyField().value = body; updateIdeaUI(); }
+    $("#j-project-compose-status").textContent = "正在保存…";
+    // Keep the composer node alive so IME, selections and pasted images survive.
+    renderCalendar();
+    clearTimeout(saveTimer); saveTimer = setTimeout(() => Promise.resolve(persist()).catch(() => {}), 300);
+  }
+  function insertProjectContent(node) {
+    const field = $("#j-project-compose-body"), selection = window.getSelection();
+    field.focus();
+    const range = selection.rangeCount && field.contains(selection.anchorNode) && field.contains(selection.focusNode)
+      ? selection.getRangeAt(0) : document.createRange();
+    if (!field.contains(range.startContainer)) { range.selectNodeContents(field); range.collapse(false); }
+    range.deleteContents(); range.insertNode(node); range.setStartAfter(node); range.collapse(true);
+    selection.removeAllRanges(); selection.addRange(range); saveProjectComposer();
+  }
+  $("#j-project-compose-body").addEventListener("input", saveProjectComposer);
+  $("#j-project-compose-body").addEventListener("compositionstart", () => { projectComposing = true; });
+  $("#j-project-compose-body").addEventListener("compositionend", () => { projectComposing = false; saveProjectComposer(); });
+  $("#j-project-compose-body").addEventListener("keydown", e => {
+    if (e.key === "Enter" && e.shiftKey && !e.isComposing && !projectComposing) {
+      e.preventDefault(); saveProjectComposer(); finishProjectComposer(); renderCalendar();
+      $("#j-project-compose-body").focus(); Promise.resolve(persist()).catch(() => {});
+    }
+  });
+  $("#j-project-compose-body").addEventListener("paste", e => {
+    if (projectComposing) return;
+    e.preventDefault();
+    const files = Array.from(e.clipboardData.files).filter(f => /^image\/(png|jpeg|gif|webp|bmp|avif)$/i.test(f.type));
+    if (files.length) {
+      for (const file of files) {
+        const token = allocateImage(file.name || "粘贴的图片"), node = document.createElement("span");
+        node.dataset.imageToken = token; node.contentEditable = "false"; node.textContent = "正在插入图片…";
+        insertProjectContent(node); trackImage(loadImage(token, file));
+      }
+    } else {
+      // A pasted multiline note stays one idea; Shift+Enter creates the next one.
+      const text = e.clipboardData.getData("text/plain").replace(/\r\n?/g, "\n").replace(/^• /gm, "  • ");
+      insertProjectContent(document.createTextNode(text));
+    }
+  });
+  $(".j-ideas-pane").addEventListener("click", e => {
+    if (!$("#j-project-compose").hidden && (e.target === $(".j-ideas-pane") || e.target === $("#j-overview-list")))
+      $("#j-project-compose-body").focus();
+  });
   function overviewContent(idea, date) {
     const open = `data-open-idea="${esc(idea.id)}" data-idea-day="${date}"`;
     const record = records[date],
@@ -1671,6 +1766,7 @@
         .call("saveState", { privateContent, nativeImages: [...imageAssets] })
         .then((result) => {
           $("#j-save-status").textContent = "已保存到本机";
+          $("#j-project-compose-status").textContent = "已保存到本机";
           if (result?.schedules && applyScheduleProjection(result.schedules)) {
             window.journalNative.schedules=result.schedules;
             renderCalendar();renderSchedule();
@@ -1680,6 +1776,7 @@
         })
         .catch((e) => {
           $("#j-save-status").textContent = "保存失败";
+          $("#j-project-compose-status").textContent = "保存失败，请保留当前内容并重试";
           notify(e.message);
           throw e;
         });
@@ -2165,7 +2262,7 @@
     if(!request || typeof request!=="object")throw Error("INVALID_REQUEST");
     const operations=["capabilities","list_projects","get_day","get_project","search","add_idea","update_idea","create_project","save_event","delete_event"];
     if(!operations.includes(request.op))throw Error("UNKNOWN_OPERATION");
-    if(apiBusy||composing||scheduleBusy||dataBusy||root.querySelector("dialog[open]"))throw Error("BUSY: finish the current edit or dialog before calling the API");
+    if(apiBusy||composing||projectComposing||scheduleBusy||dataBusy||root.querySelector("dialog[open]"))throw Error("BUSY: finish the current edit or dialog before calling the API");
     const activeElement=document.activeElement, activeSelection=editorSelection();
     apiBusy=true;root.inert=true;
     let rollback=null;
@@ -2437,6 +2534,7 @@
       ] + (state.selected === today ? " · 今天" : "");
   }
   function renderEditor() {
+    finishProjectComposer();
     resetTypingFormat();
     formatOpen = false; closeIdeaMenu();
     const [, m, d] = parse(state.selected),

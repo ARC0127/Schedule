@@ -63,6 +63,7 @@ Requires **Windows 10/11 x64**, **.NET Framework 4.8**, and the [Microsoft Edge 
 | Add an idea | **Shift+Enter**; **Enter** only adds a line |
 | Choose projects | With the caret inside an idea, the top project picker immediately adds or removes its project bindings. Outside an idea, it sets the defaults for future ideas |
 | Project counts and order | Parentheses show each project's total ideas. Projects sort by unfinished idea count, keeping their original order on ties. Ordinary notes count as unfinished ideas without becoming todos |
+| Write inside a project | Click the project overview's writing area. Ideas save automatically to today and bind to that project. Enter adds a line, Shift+Enter starts the next idea, and pasted images work inline. The unbound view supports the same flow |
 | Mark complete | Place the caret inside an idea and **tap Ctrl alone** to complete it; tap again to return it to Todo. Ordinary notes can also be completed directly; Ctrl+C/V do not trigger completion |
 | Insert an image | **Ctrl+V** in the editor |
 | Format text | Select text to reveal formatting, or use the type icon to open it for future typing. Supports size, bold, italic, underline, color and clear formatting; **Ctrl+B / I / U** toggle bold / italic / underline |
@@ -149,6 +150,8 @@ npm run test:core
 npm run test:cli
 npm run test:usability
 npm run test:tasks
+npm run test:project-bindings
+npm run test:project-compose
 npm run test:editor-links-dpi
 npm run test:math-svg
 py -3 scripts/test_native_models.py

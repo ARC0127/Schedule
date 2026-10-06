@@ -63,6 +63,7 @@
 | 添加想法 | **Shift+Enter**；**Enter** 只换行 |
 | 选择项目 | 光标位于想法内时，顶部项目选择器即时绑定、解绑或改为多项目；光标不在想法内时，选择后续新想法的默认项目 |
 | 项目数量与排序 | 项目名后括号显示总想法数，默认按未完成想法数量降序排列，同数保持原顺序；普通笔记也计入未完成想法，但不会因此进入待办 |
+| 在项目里直接写 | 点击项目总览空白输入区开始书写，自动保存到今天并绑定当前项目。Enter 换行，Shift+Enter 继续下一条，支持粘贴图片；“未绑定”页同样可直接写 |
 | 标记完成 | 光标位于某个想法中，**单按 Ctrl** 标为已完成，再按回到待办；普通想法也可直接完成，Ctrl+C/V 不会误触 |
 | 插入图片 | 在编辑区 **Ctrl+V** |
 | 设置文字样式 | 选中文字显示格式栏，也可点击文字图标主动展开，为接下来的输入设置格式。支持字号、粗体、斜体、下划线、颜色和清除格式；**Ctrl+B / I / U** 切换粗体 / 斜体 / 下划线 |
@@ -149,6 +150,8 @@ npm run test:core
 npm run test:cli
 npm run test:usability
 npm run test:tasks
+npm run test:project-bindings
+npm run test:project-compose
 npm run test:editor-links-dpi
 npm run test:math-svg
 py -3 scripts/test_native_models.py
