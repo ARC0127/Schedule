@@ -1,6 +1,6 @@
 {
   "name": "schedule-desktop",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "private": true,
   "license": "MIT",
   "author": "ARCLIGHT <https://arc0127.github.io/>",
@@ -21,7 +21,8 @@
     "test:math-svg": "node tests/math-svg.cjs",
     "test:tasks": "node tests/task-workflow.cjs",
     "test:project-bindings": "node tests/project-bindings.cjs",
-    "test:project-compose": "node tests/project-compose.cjs"
+    "test:project-compose": "node tests/project-compose.cjs",
+    "test:editor-width": "node tests/editor-width.cjs"
   },
   "devDependencies": {
     "playwright": "1.58.2",

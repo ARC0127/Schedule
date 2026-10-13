@@ -4,8 +4,8 @@
 <p align="center">一个轻量的 Windows 本地日历日志。记录想法，关联项目，把资料留在原来的位置。</p>
 <p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
 <p align="center">
-  <a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.6">下载 v0.0.6</a> ·
-  <a href="docs/releases/0.0.6.md">版本说明</a> ·
+  <a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.7">下载 v0.0.7</a> ·
+  <a href="docs/releases/0.0.7.md">版本说明</a> ·
   <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a>
 </p>
 
@@ -15,13 +15,14 @@
 
 <p align="center"><sub>使用演示数据的界面预览。桌面版直接打开，无需启动 localhost 服务。</sub></p>
 
-## v0.0.6 · 从想法到完成
+## v0.0.7 · 在项目里直接写
 
-普通想法安静地留在日记里，需要行动时再设为待办。重要标记、截止日期和关联日程围绕同一个事项展开，完成一次，各处同步。
+打开项目就能记录想法，自动记到今天并绑定当前项目。把右侧写作区拉宽，让记录更从容。
 
-- **专注今天**：双击日期展开当天，文字样式与链接在写作时就能使用。
-- **看清下一步**：待办区分未完成与已完成，可筛选普通、重要和带日程的事项。
-- **放心积累**：自动快照、恢复预览、完整备份，以及 Codex / Claude Code 本地读写接口。
+- **即时绑定**：项目选择器跟随当前想法，可直接绑定、解绑和多选，无需另起一行。
+- **一眼看清项目**：项目名后显示总想法数，按未完成想法数从多到少排列。
+- **直接开始写**：项目和未绑定总览支持文字与图片输入，自动保存。Enter 换行，Shift+Enter 继续下一条。
+- **调整写作空间**：拖动右侧分隔线改变宽度，双击复位，重启后保留设置。
 
 <details>
 <summary>查看新版待办总览</summary>
@@ -45,7 +46,7 @@
 
 ## 下载与开始
 
-1. 在 [v0.0.6 发布页](https://github.com/ARC0127/Schedule/releases/tag/v0.0.6) 下载 **`Schedule-0.0.6-windows-x64.zip`**。
+1. 在 [v0.0.7 发布页](https://github.com/ARC0127/Schedule/releases/tag/v0.0.7) 下载 **`Schedule-0.0.7-windows-x64.zip`**。
 2. 将压缩包完整解压到一个固定、可写的文件夹。
 3. 双击 **`Journal.exe`**，窗口和应用显示名为 **Schedule**。程序无需安装，保留此文件名用于兼容已有快捷方式和通知身份。
 
@@ -78,6 +79,7 @@
 | 桌面悬浮 | 点击顶栏的悬浮入口按钮；靠近查看今天，点击回到主窗口 |
 | 托盘与退出 | 关闭主窗口会收至托盘；在托盘菜单中选择退出才会结束程序 |
 | 调整侧栏 | 拖动左侧栏与内容区之间的分隔线 |
+| 调整右侧写作区 | 拖动右侧记录区左边的分隔线，向左拖动加宽；双击恢复默认，也支持左右方向键。宽度自动保存，展开当天时使用完整区域 |
 
 HTTP/HTTPS 网址、Markdown 网页链接和 Windows 路径在编辑区与总览中都会识别。编辑时用 **Ctrl+单击** 打开，移开编辑焦点后可直接单击；Markdown 链接编辑时保留源码，阅读时显示链接文字。含空格的路径请用双引号括起。“当天资料”属于该日期的记录，由这一天的项目总览共享。
 
@@ -85,7 +87,7 @@ HTTP/HTTPS 网址、Markdown 网页链接和 Windows 路径在编辑区与总览
 
 新想法默认是普通笔记，手动设为待办后可标为重要或关联日程。日程设置可选择关联任意日期的想法，关联后完成状态跟随想法，在待办里只显示一项；从日程、项目或日历完成它，其他位置同步，关联提醒也取消。转回普通想法会清除截止日期并解除关联，日程保留为独立日程。旧版本已经打勾的想法归入已完成，有截止日期或待办标记的归入待办。
 
-文字样式会随记录保存，并显示在项目总览和展开的当天页面中。应用内复制粘贴保留样式，纯文本复制保留正文。以上功能均已包含在 v0.0.6 Windows 下载包中。
+文字样式会随记录保存，并显示在项目总览和展开的当天页面中。应用内复制粘贴保留样式，纯文本复制保留正文。以上功能均已包含在 v0.0.7 Windows 下载包中。
 
 桌面版启动时打开当天。跨过午夜、从托盘恢复或唤醒后会更新“今天”；停留在当天且未输入时自动进入新一天，正在编辑或浏览历史日期时保留当前日期。点击“今天”随时返回系统当前日期。
 
@@ -132,7 +134,7 @@ py -3 scripts/build.py
 py -3 scripts/package_release.py
 ```
 
-输出为 `dist/Schedule-0.0.6-windows-x64.zip`，包含程序、中英文 README、首页图、许可证及本版发布说明。
+输出为 `dist/Schedule-0.0.7-windows-x64.zip`，包含程序、中英文 README、首页图、许可证及本版发布说明。
 
 开发测试另需 Node.js 与 npm：
 
@@ -152,12 +154,13 @@ npm run test:usability
 npm run test:tasks
 npm run test:project-bindings
 npm run test:project-compose
+npm run test:editor-width
 npm run test:editor-links-dpi
 npm run test:math-svg
 py -3 scripts/test_native_models.py
 ```
 
-原生测试需要桌面会话和 WebView2，启动前设置独立数据目录。CI 执行状态迁移测试和 Windows 构建。发布流程从 `v0.0.6` 标签构建压缩包，并使用 [保存在仓库中的发布说明](docs/releases/0.0.6.md) 创建 Release。
+原生测试需要桌面会话和 WebView2，启动前设置独立数据目录。CI 执行状态迁移测试和 Windows 构建。发布流程从 `v0.0.7` 标签构建压缩包，并使用 [保存在仓库中的发布说明](docs/releases/0.0.7.md) 创建 Release。
 
 ## 当前边界
 
@@ -167,4 +170,4 @@ py -3 scripts/test_native_models.py
 
 由 [**ARCLIGHT**](https://arc0127.github.io/) 制作，使用 [MIT 许可证](LICENSE)。欢迎通过 [Issues](https://github.com/ARC0127/Schedule/issues) 反馈问题。
 
-[架构与数据说明](docs/architecture.md) · [第三方许可](THIRD_PARTY_NOTICES.md) · [v0.0.6 发布说明](docs/releases/0.0.6.md)
+[架构与数据说明](docs/architecture.md) · [第三方许可](THIRD_PARTY_NOTICES.md) · [v0.0.7 发布说明](docs/releases/0.0.7.md)

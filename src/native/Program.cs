@@ -18,8 +18,8 @@ using Windows.UI.Notifications;
 [assembly:System.Reflection.AssemblyTitle("Schedule")]
 [assembly:System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8", FrameworkDisplayName=".NET Framework 4.8")]
 [assembly:System.Reflection.AssemblyProduct("Schedule")]
-[assembly:System.Reflection.AssemblyVersion("0.0.6.0")]
-[assembly:System.Reflection.AssemblyFileVersion("0.0.6.0")]
+[assembly:System.Reflection.AssemblyVersion("0.0.7.0")]
+[assembly:System.Reflection.AssemblyFileVersion("0.0.7.0")]
 internal static class Program
 {
     internal static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 100 * 1024 * 1024 };

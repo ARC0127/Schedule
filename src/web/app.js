@@ -259,6 +259,7 @@
     edits: {},
     sidebar: null,
     sidebarWidth: 200,
+    editorWidth: 306,
     navigation: {},
     dayExpanded: false,
     sidebarScroll: 0,
@@ -1754,6 +1755,7 @@
       query: state.query,
       sidebar: state.sidebar,
       sidebarWidth: state.sidebarWidth,
+      editorWidth: state.editorWidth,
       navigation: state.navigation,
       dayExpanded: state.dayExpanded,
       sidebarScroll: state.sidebarScroll,
@@ -1854,6 +1856,7 @@
     overviewPage = state.navigation[state.filter]?.page || 0;
     if (Number.isFinite(p.sidebarWidth))
       state.sidebarWidth = Math.max(160, Math.min(420, p.sidebarWidth));
+    if (Number.isFinite(p.editorWidth)) state.editorWidth = Math.max(290, p.editorWidth);
     if (p.edits && typeof p.edits === "object") {
       for (const [k, r] of Object.entries(p.edits)) {
         if (
@@ -2386,6 +2389,7 @@
     root.style.setProperty("--j-sidebar-width", width + "px");
     sidebarHandle.setAttribute("aria-valuenow", String(width));
     sidebarHandle.setAttribute("aria-valuemax", String(sidebarLimit()));
+    applyEditorWidth();
   }
   sidebarHandle.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
@@ -2447,6 +2451,52 @@
     persist();
   });
   new ResizeObserver(applySidebarWidth).observe(root);
+
+  const editorHandle = $("#j-editor-resizer");
+  let editorDrag = null;
+  function editorLimit() {
+    const sidebar = root.clientWidth > 880 && root.dataset.sidebar !== "closed"
+      ? Number(sidebarHandle.getAttribute("aria-valuenow")) : 0;
+    return Math.max(290, root.clientWidth - sidebar - 300);
+  }
+  function applyEditorWidth() {
+    const limit = editorLimit(), width = Math.round(Math.max(290, Math.min(state.editorWidth, limit)));
+    root.style.setProperty("--j-detail", width + "px");
+    editorHandle.setAttribute("aria-valuenow", String(width));
+    editorHandle.setAttribute("aria-valuemax", String(limit));
+  }
+  editorHandle.addEventListener("pointerdown", e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    editorDrag = {pointer: e.pointerId, start: e.clientX,
+      width: Number(editorHandle.getAttribute("aria-valuenow")), saved: state.editorWidth};
+    editorHandle.setPointerCapture(e.pointerId);
+    root.dataset.resizing = "editor";
+  });
+  editorHandle.addEventListener("pointermove", e => {
+    if (!editorDrag || e.pointerId !== editorDrag.pointer) return;
+    state.editorWidth = Math.round(Math.max(290, Math.min(editorLimit(), editorDrag.width + editorDrag.start - e.clientX)));
+    applyEditorWidth();
+  });
+  function finishEditorDrag(e) {
+    if (!editorDrag || e.pointerId !== editorDrag.pointer) return;
+    if (e.type === "pointercancel") state.editorWidth = editorDrag.saved;
+    editorDrag = null; delete root.dataset.resizing;
+    applyEditorWidth(); persist();
+  }
+  for (const event of ["pointerup", "pointercancel", "lostpointercapture"])
+    editorHandle.addEventListener(event, finishEditorDrag);
+  editorHandle.addEventListener("keydown", e => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const width = Number(editorHandle.getAttribute("aria-valuenow"));
+    state.editorWidth = e.key === "Home" ? 290 : e.key === "End" ? editorLimit()
+      : Math.max(290, Math.min(editorLimit(), width + (e.key === "ArrowLeft" ? 16 : -16)));
+    applyEditorWidth(); persist();
+  });
+  editorHandle.addEventListener("dblclick", () => {
+    state.editorWidth = 306; applyEditorWidth(); persist();
+  });
 
   const pathLoads = new Set();
   function trackPath(task) {
@@ -2574,6 +2624,7 @@
     $("#j-search").value = state.query;
     $(".j-search-row").hidden = !state.query;
     if (state.sidebar) root.dataset.sidebar = state.sidebar;
+    applyEditorWidth();
     root.dataset.dayExpanded = String(state.dayExpanded);
     if (state.dayExpanded) expandDay();
     restoreViewPosition();
@@ -2929,6 +2980,7 @@
         (!root.dataset.sidebar && root.clientWidth < 881);
       state.sidebar = isClosed ? "open" : "closed";
       root.dataset.sidebar = state.sidebar;
+      applyEditorWidth();
       persist();
     } else if (action === "search") {
       switchView("search");

@@ -4,8 +4,8 @@
 <p align="center">A lightweight Windows calendar journal. Capture ideas, connect projects, and keep your files where they belong.</p>
 <p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
 <p align="center">
-  <a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.6">Download v0.0.6</a> ·
-  <a href="docs/releases/0.0.6.md">Release notes</a> ·
+  <a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.7">Download v0.0.7</a> ·
+  <a href="docs/releases/0.0.7.md">Release notes</a> ·
   <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a>
 </p>
 
@@ -15,13 +15,14 @@
 
 <p align="center"><sub>Interface preview with synthetic demo data. The desktop app launches directly; no localhost server is required.</sub></p>
 
-## v0.0.6 · From ideas to done
+## v0.0.7 · Write directly in your projects
 
-Keep ordinary notes in your journal and turn them into tasks when action is needed. Importance, deadlines and linked events belong to one item. Complete it once and every view follows.
+Open a project and capture an idea. It saves to today and binds to that project automatically. Widen the right editor when you need more writing space.
 
-- **Focus on a day:** double-click a date to expand it, with text styling and links available while writing.
-- **See what comes next:** pending and completed views, with ordinary, important and scheduled task filters.
-- **Keep your work safe:** daily snapshots, restore previews, complete backups and a local API for Codex / Claude Code.
+- **Live bindings:** the project picker follows the current idea. Add, remove or change projects without starting a new line.
+- **Projects at a glance:** total idea counts appear beside names, sorted by unfinished idea count.
+- **Start writing:** project and unbound overviews accept text and images with automatic saving. Enter adds a line; Shift+Enter starts the next idea.
+- **Adjust your workspace:** drag the right divider to resize, double-click to reset, and keep your preferred width across restarts.
 
 <details>
 <summary>See the updated Todo overview</summary>
@@ -45,7 +46,7 @@ Keep ordinary notes in your journal and turn them into tasks when action is need
 
 ## Download and start
 
-1. Download **`Schedule-0.0.6-windows-x64.zip`** from the [v0.0.6 release](https://github.com/ARC0127/Schedule/releases/tag/v0.0.6).
+1. Download **`Schedule-0.0.7-windows-x64.zip`** from the [v0.0.7 release](https://github.com/ARC0127/Schedule/releases/tag/v0.0.7).
 2. Extract the entire archive into a fixed, writable folder.
 3. Double-click **`Journal.exe`**. Its display name is **Schedule**. No installer is needed; the executable name is retained for existing shortcut and notification compatibility.
 
@@ -78,6 +79,7 @@ Requires **Windows 10/11 x64**, **.NET Framework 4.8**, and the [Microsoft Edge 
 | Float on the desktop | Use the floating-icon control in the top bar; hover to preview today and click to restore |
 | Tray and exit | Closing the main window sends it to the tray; use Exit in the tray menu to stop the app |
 | Resize the sidebar | Drag the divider between the sidebar and content |
+| Resize the writing area | Drag the divider at the left edge of the right editor; moving left widens it. Double-click to reset, or use arrow keys. The width is saved; expanded days still use the full area |
 
 HTTP/HTTPS URLs, Markdown web links and Windows paths are recognized in both the editor and overviews. **Ctrl+click** opens a link while editing; after leaving the editor, a normal click opens it. Markdown links retain their source while editing and display their label while reading. Quote paths containing spaces. The daily resources section belongs to the date record and is shared across that day’s project views.
 
@@ -85,7 +87,7 @@ Pasting multiline text or equations keeps them in the current idea, including bl
 
 New ideas start as ordinary notes. Mark one as a task to add importance or a linked schedule. Events can link to ideas from any date and follow that idea's completion; Todo shows one item for the idea and its linked events. Completing it from the calendar, project or event synchronizes the other views and cancels linked reminders. Converting it back to a note clears its deadline and detaches events, retaining them as standalone events. Existing checked ideas migrate to completed tasks; existing task flags and deadlines remain todos.
 
-Text styles persist with each record and appear in project overviews and expanded day views. Copying within the app preserves styles, while plain-text copying retains the source text. These features are included in the v0.0.6 Windows download.
+Text styles persist with each record and appear in project overviews and expanded day views. Copying within the app preserves styles, while plain-text copying retains the source text. These features are included in the v0.0.7 Windows download.
 
 The desktop app opens today's date on startup. Midnight, tray restoration, and wake-up refresh the current day. An idle view of today follows the new day; active editing and historical-date browsing stay on their selected date. The Today button always reads the current system date.
 
@@ -132,7 +134,7 @@ The first build downloads pinned NuGet dependencies and uses the .NET Framework 
 py -3 scripts/package_release.py
 ```
 
-The output is `dist/Schedule-0.0.6-windows-x64.zip`. It includes the app, both READMEs, the home screenshot, licenses, and the notes for this release.
+The output is `dist/Schedule-0.0.7-windows-x64.zip`. It includes the app, both READMEs, the home screenshot, licenses, and the notes for this release.
 
 Development tests also require Node.js and npm:
 
@@ -152,12 +154,13 @@ npm run test:usability
 npm run test:tasks
 npm run test:project-bindings
 npm run test:project-compose
+npm run test:editor-width
 npm run test:editor-links-dpi
 npm run test:math-svg
 py -3 scripts/test_native_models.py
 ```
 
-Native tests require a desktop session and WebView2, and set an isolated data directory before process startup. CI runs state migration tests and a Windows build. The release workflow builds from the `v0.0.6` tag and publishes using the [versioned release notes](docs/releases/0.0.6.md).
+Native tests require a desktop session and WebView2, and set an isolated data directory before process startup. CI runs state migration tests and a Windows build. The release workflow builds from the `v0.0.7` tag and publishes using the [versioned release notes](docs/releases/0.0.7.md).
 
 Each document load reads the current file before enabling editing. Failed reads block editing, stale saves reject external file changes, and unchanged saves preserve the previous backup.
 
@@ -169,4 +172,4 @@ The interface is currently Chinese and storage remains single-user JSON. Assista
 
 Made by [**ARCLIGHT**](https://arc0127.github.io/) and released under the [MIT License](LICENSE). Report problems through [Issues](https://github.com/ARC0127/Schedule/issues).
 
-[Architecture and data model (Chinese)](docs/architecture.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [v0.0.6 release notes](docs/releases/0.0.6.md)
+[Architecture and data model (Chinese)](docs/architecture.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [v0.0.7 release notes](docs/releases/0.0.7.md)

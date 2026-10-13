@@ -810,7 +810,7 @@
 }
 @media (min-width: 680px) and (max-width: 880px) {
   #journal-ui .j-layout {
-    grid-template-columns: minmax(0, 1fr) 290px;
+    grid-template-columns: minmax(0, 1fr) var(--j-detail);
   }
   #journal-ui .j-sidebar {
     display: none;
@@ -1640,7 +1640,8 @@
   position: relative;
   grid-template-columns: var(--j-sidebar-width) minmax(0, 1fr) var(--j-detail);
 }
-#journal-ui .j-sidebar-resizer {
+#journal-ui .j-sidebar-resizer,
+#journal-ui .j-editor-resizer {
   position: absolute;
   z-index: 12;
   top: 0;
@@ -1652,7 +1653,8 @@
   touch-action: none;
   transform: none;
 }
-#journal-ui .j-sidebar-resizer:before {
+#journal-ui .j-sidebar-resizer:before,
+#journal-ui .j-editor-resizer:before {
   content: "";
   position: absolute;
   top: 0;
@@ -1661,7 +1663,8 @@
   width: 2px;
   background: transparent;
 }
-#journal-ui .j-sidebar-resizer:after {
+#journal-ui .j-sidebar-resizer:after,
+#journal-ui .j-editor-resizer:after {
   content: "";
   position: absolute;
   top: calc(50% - 15px);
@@ -1673,7 +1676,10 @@
 }
 #journal-ui .j-sidebar-resizer:hover:before,
 #journal-ui .j-sidebar-resizer:focus-visible:before,
-#journal-ui[data-resizing] .j-sidebar-resizer:before {
+#journal-ui[data-resizing="true"] .j-sidebar-resizer:before,
+#journal-ui .j-editor-resizer:hover:before,
+#journal-ui .j-editor-resizer:focus-visible:before,
+#journal-ui[data-resizing="editor"] .j-editor-resizer:before {
   background: #91a98b;
 }
 #journal-ui[data-resizing],
@@ -1683,6 +1689,16 @@
 }
 #journal-ui[data-sidebar="closed"] .j-sidebar-resizer {
   display: none;
+}
+#journal-ui .j-editor-resizer {
+  left: auto;
+  right: calc(var(--j-detail) - 5px);
+}
+#journal-ui[data-day-expanded="true"] .j-editor-resizer {
+  display: none;
+}
+@media (max-width: 679px) {
+  #journal-ui .j-editor-resizer { display: none; }
 }
 #journal-ui #j-project-nav .j-project > span:last-child {
   white-space: normal;
@@ -1704,7 +1720,7 @@
 }
 @media (min-width: 680px) and (max-width: 880px) {
   #journal-ui .j-layout {
-    grid-template-columns: minmax(0, 1fr) 290px;
+    grid-template-columns: minmax(0, 1fr) var(--j-detail);
   }
 }
 @media (max-width: 880px) {
