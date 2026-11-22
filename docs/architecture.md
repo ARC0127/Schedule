@@ -11,6 +11,12 @@ src/native/
   JournalArchive.cs       每日/手动快照、预览恢复、完整备份与 Markdown 文件操作
   LocalApi.cs             当前 Windows 用户专属命名管道、串行请求
   JournalWindow.cs        WebView2 消息桥、主窗口与托盘生命周期
+  BluetoothRfcomm.cs      已配对设备枚举、认证加密的 Classic RFCOMM 连接
+  BluetoothProtocol.cs    安卓 v1 帧、日程字段与改动校验
+  BluetoothSync.cs        完整日程快照、更新删除、冲突与重试去重
+  BluetoothTransport.cs   蓝牙流创建与隔离测试传输入口
+  JournalSyncTransfer.cs  在 v1 握手中协商完整记录同步，分块收发与内容校验
+  JournalSyncCommit.cs    完整合并结果的校验、备份、原子保存及提醒重排
   WindowsReminders.cs     Windows 提醒注册、取消及诊断
   TaskLinks.cs            关联日程的完成投影与引用校验
   LocalPaths.cs           路径检查、系统打开与定位
@@ -84,7 +90,21 @@ TeX 支持 `\(...\)`、`\[...\]` 和 `$$...$$`，先识别完整公式再识别�
 
 保存前在 `history` 中保留当天首次修改前的完整快照，最多保留 30 个每日快照。手动和恢复前快照不自动删除。恢复先验证完整存储、预览变化并备份当前数据，再原子保存并重新加载界面。恢复后逐条重新安排日程提醒；旧提醒取消失败会明确显示警告。
 
-完整 ZIP 保存整个 JSON 信封，图片继续内嵌，导入不解压任意 ZIP 路径，只读取限定大小的 `journal.json`。Markdown 导出按日期生成文档和图片目录，导入只读取所选 Markdown 同目录内的图片。关联外部文件保留原路径。Markdown 用于阅读与追加，精确迁移格式和内部标识使用完整备份。
+完整 ZIP 保存 JSON 与引用的 `images/<sha256>.<ext>` 原图，保留旧内嵌图片。导入仅提取清单引用且名称合法的原图，流式校验后落盘，不解压任意 ZIP 路径。Markdown 导出按日期生成文档和图片目录，导入只读取所选 Markdown 同目录内的图片。关联外部文件保留原路径。Markdown 用于阅读与追加，精确迁移格式和内部标识使用完整备份。
+
+## 蓝牙同步
+
+完整同步在原有 `hello` / `changes` 中协商 `journalSync: 2`。未协商时维持 v1 日程协议。协商成功后，使用 `journal-start`（字节长度、SHA-256）与有序 `journal-part`（最多 384 KiB 二进制的 Base64）交换 JSON，文字清单单份最多 100 MiB，最终以同来源 `ack` 确认。新增 `assetSync:2` 能力协商后，原图从 JSON 分离：清单之后发送 `assets-start`，每张图片使用 `asset-start`、有序 `asset-part`（192 KiB）与校验落盘后的 `asset-ack`。单图最多 64 MiB，累计原图没有固定额度。失败保留完整原图，临时半张丢弃，重试清单省略已完成文件。新旧混用时保持 `assetSync:1` 整包路径，并在提交前检查回复大小。服务 UUID 不变。
+
+`src/web/sync.js` 与 Android 的同名模块保持一致。两端转换为项目、日期笔记、独立想法、日程实体，原图按内容摘要引用。以手机保存的共同版本做三方合并，不用修改时间决定覆盖。冲突时整次事务不写入合并内容，电脑将待确认版本保存到独立的 `sync-review.json` 并发送托盘通知。用户逐项确认后重新连接；仅当设备与 base/desktop/phone 三份内容仍一致时应用选择。手机收到 `pending-review` 只确认收包并释放编辑锁，不更新共同版本。电脑收到完成确认后清除待确认文件；断线保留审批记录供重试。等待期间继续编辑会使相应选择失效。纯重试使用稳定标识，不新增副本。项目被并发删除但仍有想法引用时保留项目并提示冲突。Windows 正文中独立 `•` 是想法结构标记。转换时为手机正文中的字面列表添加内部缩进，并记录未修改文本的映射，往返恢复原文，避免拆分想法编号。
+
+完整同步通过 `sync_journal` 在现有 UI 编辑锁内刷新并合并当前状态。它使用共同基线而非普通 API 的单个修订号。所有原图及记录验证完成后，`commitSync` 通过 `Program.Restore` 一次原子替换完整存储，并保留恢复前快照。手机提交前只备份 journal、events 和 alarms 元数据，写 `pending-metadata.json` 恢复标记；原图不可变并保留，启动时恢复未完成的多文件写入。Windows 通过仅映射图片目录的 `schedule-images.local` 虚拟域渲染原图，CSP 只额外允许该图片来源。同步错误使用 `sync-error` 返回阶段与原因，断线时展示最后传输进度。Android 完整备份包含 journal、事件状态、原图及提醒去重状态；不包含设备外部文件内容、系统授权或签名私钥。
+
+桌面标题栏的“蓝牙同步”通过 `bluetoothDevices` 和 `bluetoothSync` 调用当前 `Journal.exe`。必须手动选择已配对设备。设备枚举、连接及帧收发在工作线程执行。旧版日程路径回到 UI 线程异步调用 `ExecuteApi`，依次读取日程及修订号、执行 `save_event`／`delete_event`；完整同步使用上述 `sync_journal` 路径。两者均不启动 CLI 子进程。同步对话框本身不阻止 API，其他对话框、组合输入、数据操作与并发 API 的 BUSY 检查仍保留。
+
+与安卓旧版共用 Classic RFCOMM 服务 UUID `eb703723-8f0f-4b98-aa19-be0423b0a0c6`。每帧为 4 字节大端长度加 UTF-8 JSON，上限 4 MiB；旧版帧顺序为 `hello → changes → snapshot → ack`，版本 `v:1`。来源标识继续使用 Windows 用户 SID 与规范日志绝对路径计算，避免集成后被手机识别为另一个数据源。旧版事件标识和字段保持不变。手机改动按基准值比较；当前值已等于目标时重试返回 applied，基准不符或关联/旧日程写入返回 conflict，保存失败返回 retry。最终日程快照表达删除，ack 验证同一来源。
+
+`python scripts/test_bluetooth.py` 运行从安卓配套实现迁入的协议与合并测试，附加 `--hardware` 可验证本机加密 socket 与设备枚举。`npm run test:bluetooth` 用后台原生窗口和隔离日志跑完整收发、真实内部事件 API、断线重试、冲突、文件写保护与重启。该测试仅在 `SCHEDULE_TEST_DATA` 非空且指定合法 `SCHEDULE_TEST_BLUETOOTH_PIPE` 时以本地管道替代无线传输，普通用户配置始终使用真实 RFCOMM。模拟传输测试不等于真机无线同步验证。
 
 ## 加载与保存一致性
 
@@ -97,3 +117,11 @@ TeX 支持 `\(...\)`、`\[...\]` 和 `$$...$$`，先识别完整公式再识别�
 默认目录为 `%USERPROFILE%\.schedule`，独立测试仍使用 `SCHEDULE_TEST_DATA`。不要改回 AppData：MSIX 宿主（包括 Codex）的子进程会继承文件重定向，字面相同的路径可能对应不同文件。定位此类问题必须通过文件句柄的 `GetFinalPathNameByHandle` 对比实际路径，且测试必须覆盖资源管理器启动。参见 [Microsoft 的 AppData 重定向说明](https://learn.microsoft.com/en-us/windows/msix/desktop/flexible-virtualization)。
 
 `StoragePaths` 仅在新日志不存在时检查旧 AppData 和 `Packages/*/LocalCache/Local/CodexJournal`。迁移先保留来源及 `.bak`，选择唯一有内容的文本副本；多个不同的有效副本或不可读数据使启动显式失败，不猜测哪份较新。新目录存在后不再导入，避免复活已删除记录。图片内嵌在 JSON，迁移保留整个信封。WebView2 缓存无需迁移。
+
+### 原图增量与 Wi-Fi 协商（0.0.9 / Android 1.1.7）
+
+`assetSync:1` 在 `changes` 后协商 `asset-inventory`。发送端省略接收端已有的图片；合并前用本机原图补齐并重新校验。手机保留完整发送快照供回复补齐，不推进未确认冲突的基准。
+
+`wifiSync:1` 经认证加密 RFCOMM 交换 `wifi-offer` 和 `wifi-result`。先尝试现有局域网，再协商 Android LocalOnlyHotspot。Windows 使用 Native WLAN temporary profile，密码不写入持久配置，关闭时恢复原连接。Wi-Fi 服务仅在当前同步会话开放，TLS 证书指纹和随机令牌经已配对蓝牙提供。连通失败明确回退蓝牙，已开始数据交换后不自动切换通道重试。原有冲突审阅/提交保持共用。
+
+手机用单调时钟的进展监视器替代固定 240 秒计时器；输入/输出成功后刷新活动时间。Windows socket 同样使用 120 秒读写空闲超时，桥接不再提前在五分钟结束调用。关闭/切后台释放连接和临时热点。

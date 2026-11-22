@@ -89,6 +89,8 @@ internal static class JournalArchive
     internal static object Preview(string id,string text=null)
     {
         var raw=text??File.ReadAllText(HistoryFile(id),Encoding.UTF8);var next=Validate(raw);
+        var originals=new ScheduleSync.SyncAssets(Path.Combine(Program.DataDir,"images"));
+        foreach(string image in ExternalImages(raw))if(!originals.Has(image))throw new InvalidDataException("原图缺失，请导入包含 images 的完整 ZIP 备份："+image);
         var before=Edits(Program.Data);var after=Edits(next);
         var dates=before.Keys.Union(after.Keys).OrderByDescending(d=>d).Select(d=>new {
             date=d, status=!before.ContainsKey(d)?"新增":!after.ContainsKey(d)?"移除":Program.Json.Serialize(before[d])==Program.Json.Serialize(after[d])?"相同":"修改",
@@ -114,7 +116,20 @@ internal static class JournalArchive
         using(var zip=ZipFile.OpenRead(path)) {
             var entry=zip.GetEntry("journal.json");
             if(entry==null||entry.Length>100L*1024*1024)throw new InvalidDataException("备份包缺少有效的 journal.json。");
-            using(var reader=new StreamReader(entry.Open(),Encoding.UTF8))return reader.ReadToEnd();
+            string text;using(var reader=new StreamReader(entry.Open(),Encoding.UTF8))text=reader.ReadToEnd();
+            Validate(text);
+            var assets=new ScheduleSync.SyncAssets(Path.Combine(Program.DataDir,"images"));
+            foreach(string id in ExternalImages(text)) {
+                var original=zip.GetEntry("images/"+id);
+                if(original==null||original.Length<1||original.Length>ScheduleSync.SyncAssets.Maximum)throw new InvalidDataException("备份缺少原图："+id);
+                var tmp=assets.PathFor(id)+".import";
+                try {
+                    using(var input=original.Open())using(var output=File.Create(tmp)){var buffer=new byte[32768];long total=0;int n;while((n=input.Read(buffer,0,buffer.Length))>0){total+=n;if(total>ScheduleSync.SyncAssets.Maximum)throw new InvalidDataException("原图超过 64 MiB。");output.Write(buffer,0,n);}}
+                    using(var file=File.OpenRead(tmp))if(!id.StartsWith(ScheduleSync.SyncAssets.Hash(file)+".",StringComparison.Ordinal))throw new InvalidDataException("备份原图校验失败。");
+                    if(!assets.Has(id)){if(File.Exists(assets.PathFor(id)))File.Delete(assets.PathFor(id));File.Move(tmp,assets.PathFor(id));}
+                }finally{if(File.Exists(tmp))File.Delete(tmp);}
+            }
+            return text;
         }
     }
     internal static object PickImport()
@@ -129,9 +144,15 @@ internal static class JournalArchive
     {
         using(var stream=new FileStream(path,FileMode.Create,FileAccess.Write))
         using(var zip=new ZipArchive(stream,ZipArchiveMode.Create)) {
-            using(var writer=new StreamWriter(zip.CreateEntry("journal.json").Open(),new UTF8Encoding(false)))writer.Write(File.ReadAllText(Program.StateFile,Encoding.UTF8));
-            using(var writer=new StreamWriter(zip.CreateEntry("README.txt").Open(),new UTF8Encoding(false)))writer.Write("Schedule complete backup. Embedded images, projects, ideas, styles and schedules are included. Linked files remain at their original paths. Import using Schedule > Data > Import backup.");
+            string text=File.ReadAllText(Program.StateFile,Encoding.UTF8);
+            using(var writer=new StreamWriter(zip.CreateEntry("journal.json").Open(),new UTF8Encoding(false)))writer.Write(text);
+            var assets=new ScheduleSync.SyncAssets(Path.Combine(Program.DataDir,"images"));
+            foreach(string id in ExternalImages(text)) {if(!assets.Has(id))throw new InvalidDataException("原图不可用："+id);using(var input=File.OpenRead(assets.PathFor(id)))using(var output=zip.CreateEntry("images/"+id).Open())input.CopyTo(output);}
+            using(var writer=new StreamWriter(zip.CreateEntry("README.txt").Open(),new UTF8Encoding(false)))writer.Write("Schedule complete backup. Original images, projects, ideas, styles and schedules are included. Linked files remain at their original paths. Import using Schedule > Data > Import backup.");
         }
+    }
+    static IEnumerable<string> ExternalImages(string text) {
+        return System.Text.RegularExpressions.Regex.Matches(text,@"https://schedule-images\.local/([a-f0-9]{64}\.(?:png|jpeg|gif|webp|avif|bmp|heic|heif))").Cast<System.Text.RegularExpressions.Match>().Select(m=>m.Groups[1].Value).Distinct();
     }
     internal static object Export(Dictionary<string,object> request)
     {
@@ -154,7 +175,10 @@ internal static class JournalArchive
                 foreach(Dictionary<string,object> img in (IEnumerable)request["images"]) {
                     string name=Convert.ToString(img["name"]);
                     if(name!=Path.GetFileName(name))throw new ArgumentException("无效的图片文件名。");
-                    using(var output=zip.CreateEntry("images/"+name).Open()) {var bytes=Convert.FromBase64String(Convert.ToString(img["base64"]));output.Write(bytes,0,bytes.Length);}
+                    using(var output=zip.CreateEntry("images/"+name).Open()) {
+                        if(img.ContainsKey("ref")){var assets=new ScheduleSync.SyncAssets(Path.Combine(Program.DataDir,"images"));string id=Convert.ToString(img["ref"]);if(!assets.Has(id))throw new InvalidDataException("原图不可用。");using(var input=File.OpenRead(assets.PathFor(id)))input.CopyTo(output);}
+                        else {var bytes=Convert.FromBase64String(Convert.ToString(img["base64"]));output.Write(bytes,0,bytes.Length);}
+                    }
                 }
             }
     }

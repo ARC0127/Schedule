@@ -221,7 +221,7 @@ async function saved() {
     );
     assert.equal(added.length, 3);
     assert.deepEqual(added[2].projectIds, ["b"]);
-    assert.deepEqual(data.newIdeaProjects, ["a"]);
+    assert.deepEqual(data.newIdeaProjects, []);
     assert.deepEqual(
       data.edits[day].ideas.slice(0, original[day].ideas.length),
       original[day].ideas,

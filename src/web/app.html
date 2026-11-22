@@ -13,6 +13,7 @@
       ><strong>Schedule</strong><span class="j-preview">浏览器预览</span>
     </div>
     <div class="j-window-tools">
+      <button type="button" id="j-bluetooth-open" class="j-bluetooth-entry" aria-label="蓝牙同步" hidden><i data-lucide="bluetooth" aria-hidden="true"></i><span>蓝牙同步</span></button>
       <button type="button" class="j-icon" data-action="data" aria-label="数据与备份" title="备份、恢复与导入导出"><i data-lucide="archive" aria-hidden="true"></i></button>
       <button
         type="button"
@@ -208,6 +209,7 @@
         ><i data-lucide="plus" aria-hidden="true"></i></button
       ><small id="j-schedule-status" hidden></small>
       <div id="j-schedule-list" aria-label="当天日程"></div>
+      <div class="j-project-dock">
       <div class="j-entry-meta">
         <button
           type="button"
@@ -247,6 +249,7 @@
             <i data-lucide="plus" aria-hidden="true"></i>新建项目
           </button>
         </div>
+      </div>
       </div>
       <input
         class="j-entry-title"
@@ -356,6 +359,22 @@
       </div>
     </section>
   </div>
+  <dialog id="j-image-dialog" aria-label="图片预览">
+    <div id="j-image-stage" tabindex="0" autofocus aria-label="图片，滚轮缩放，拖动查看细节，点击图片外部关闭">
+      <div id="j-image-surface"><img id="j-image-full" alt="" draggable="false" /></div>
+    </div>
+  </dialog>
+  <dialog id="j-bluetooth-dialog" class="j-feature-dialog" aria-labelledby="j-bluetooth-title">
+    <div class="j-picker-heading"><h2 id="j-bluetooth-title">蓝牙同步</h2><button type="button" class="j-icon" id="j-bluetooth-close" aria-label="关闭蓝牙同步"><i data-lucide="x" aria-hidden="true"></i></button></div>
+    <p>手机打开 Schedule 的同步页，选择这台电脑，然后点击「等待电脑连接」。</p>
+    <label for="j-bluetooth-device">已配对的手机</label>
+    <div class="j-bluetooth-devices"><select id="j-bluetooth-device" aria-describedby="j-bluetooth-status"><option value="">选择手机</option></select><button type="button" class="j-text-button" id="j-bluetooth-refresh">刷新</button></div>
+    <label class="j-sync-wifi-option"><input type="checkbox" id="j-sync-wifi" checked>自动使用 Wi-Fi 加速</label>
+    <small>蓝牙自动协商连接。优先局域网，无法直达时尝试手机临时热点，结束后恢复原 Wi-Fi。也可取消加速，仅用蓝牙。只补传缺少的原图，冲突在电脑确认。</small>
+    <p id="j-bluetooth-status" role="status" aria-live="polite"></p>
+    <section id="j-sync-review" hidden></section>
+    <div class="j-dialog-actions"><button type="button" class="j-text-button" id="j-bluetooth-settings">系统蓝牙设置</button><button type="button" class="j-small-button solid" id="j-bluetooth-sync" disabled>双向同步</button></div>
+  </dialog>
   <dialog id="j-project-dialog" aria-labelledby="j-project-dialog-title">
     <form id="j-project-form">
       <div class="j-picker-heading">

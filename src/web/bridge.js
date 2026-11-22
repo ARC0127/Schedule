@@ -4,10 +4,10 @@
   const call = (method, payload = null, files = null) =>
     new Promise((resolve, reject) => {
       const id = String(++serial);
-      const timer = ["exportData", "importBackup", "importMarkdown"].includes(method) ? null : setTimeout(() => {
+      const timer = ["exportData", "importBackup", "importMarkdown", "bluetoothSync"].includes(method) ? null : setTimeout(() => {
         pending.delete(id);
         reject(Error("Windows 未及时响应，请检查路径或稍后重试。"));
-      }, 15000);
+      }, method === "bluetoothSync" ? 300000 : 15000);
       pending.set(id, { resolve, reject, timer });
       try {
         if (files)

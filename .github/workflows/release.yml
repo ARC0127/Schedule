@@ -27,7 +27,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python scripts/package_release.py --tag "$env:RELEASE_TAG"
-      - name: Publish archive with preserved bilingual release notes
+      - name: Prepare draft with preserved bilingual release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -36,4 +36,4 @@ jobs:
           $version = (Get-Content package.json | ConvertFrom-Json).version
           gh release create "$env:RELEASE_TAG" "dist/Schedule-$version-windows-x64.zip" --verify-tag --draft --title "Schedule v$version" --notes-file "docs/releases/$version.md"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          gh release edit "$env:RELEASE_TAG" --draft=false --latest
+          Write-Output "Attach the same-signed Android APK and combined bundle, verify all assets, then publish this draft."

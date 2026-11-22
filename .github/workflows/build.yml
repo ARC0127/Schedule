@@ -17,6 +17,10 @@ jobs:
       - run: npm test
       - run: python scripts/build.py
       - run: python scripts/test_native_models.py
+      - run: python scripts/test_bluetooth.py
+      - run: python scripts/test_batch_assets.py
+      - name: Check shared Windows and Android sync model
+        run: python -c "from pathlib import Path; assert Path('src/web/sync.js').read_bytes() == Path('mobile/android/assets/sync.js').read_bytes()"
       - uses: actions/upload-artifact@v4
         with:
           name: Schedule-windows-x64

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; form-action 'none'; base-uri 'none'; frame-src 'none'">
+<title>Schedule</title>
+<link rel="stylesheet" href="katex/katex.min.css">
+<link rel="stylesheet" href="app.css">
+<script defer src="katex/katex.min.js"></script>
+<script defer src="content.js"></script>
+<script defer src="journal.js"></script>
+<script defer src="sync.js"></script>
+<script defer src="app.js"></script>
+</head>
+<body>
+<div id="application">
+  <header class="top">
+    <div><h1>Schedule</h1><time id="today-label"></time></div>
+    <button id="today" class="quiet"></button>
+  </header>
+  <main id="screen"></main>
+  <nav id="tabs" aria-label="Schedule"></nav>
+</div>
+<dialog id="editor"></dialog>
+<dialog id="preview" aria-label="Image preview"></dialog>
+<div id="toast" role="status" hidden></div>
+</body>
+</html>
+

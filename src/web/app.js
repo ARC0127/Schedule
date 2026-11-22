@@ -117,9 +117,13 @@
     );
   }
   let projectDialog = { id: null, link: false };
-  let projectComposer = null, projectComposing = false;
+  let sidebarProjectReturnId = null;
+  let projectComposer = null, projectEditorController = null;
+  let inlineIdeaEditor = null, ideaClickTimer = null;
   let newIdeaProjects = [],
     pickerTarget = null,
+    pickerOrder = null,
+    pickerMarkup = "",
     overviewPage = 0;
   const makeIdeaId = () =>
     "idea-" +
@@ -191,21 +195,18 @@
     const ranges = ideaRanges(body),
       next = ranges.map((p) => {
         const prior = mapped.get(p.offset);
-        return prior
-          ? { ...prior, offset: p.offset }
-          : {
-              id: makeIdeaId(),
-              offset: p.offset,
-              done: false,
-              projectIds: [...newIdeaProjects],
-            };
+        if (prior) return { ...prior, offset: p.offset };
+        const projectIds = [...newIdeaProjects];
+        // A manual preselection applies only to the next idea, never later notes.
+        newIdeaProjects = [];
+        return { id: makeIdeaId(), offset: p.offset, done: false, projectIds };
       });
     for (const oldRange of ideaRanges(old)) {
       if (oldRange.offset < a || oldRange.offset >= b || oldRange.end <= b)
         continue;
       const source = previous.find((p) => p.offset === oldRange.offset),
         index = ranges.findIndex((p) => p.offset <= c && p.end >= c);
-      if (source && index >= 0) {
+      if (source && index >= 0 && !next.some(p => p.id === source.id)) {
         next[index].projectIds = [
           ...new Set([...next[index].projectIds, ...source.projectIds]),
         ];
@@ -384,6 +385,15 @@
   $("#j-entry-project").addEventListener("pointerdown", e => {
     if (e.button === 0) e.preventDefault();
   });
+  const editorStickySizes = new ResizeObserver(entries => {
+    for (const { target } of entries) {
+      const name = target.classList.contains("j-editor-heading")
+        ? "--j-editor-heading-height" : "--j-project-dock-height";
+      $(".j-editor").style.setProperty(name, target.getBoundingClientRect().height + "px");
+    }
+  });
+  editorStickySizes.observe($(".j-editor-heading"));
+  editorStickySizes.observe($(".j-project-dock"));
   $(".j-format-tools").addEventListener("click", e => {
     const b = e.target.closest("[data-format]");
     if (!b) return;
@@ -544,7 +554,7 @@
             node = document.createElement("img");
             node.src = asset.src;
             node.alt = asset.name || "粘贴的图片";
-            node.draggable = false;
+            node.draggable = false; node.title = "单击查看原图";
           } else {
             node = document.createElement("span");
             node.className = "j-image-placeholder";
@@ -651,6 +661,7 @@
   });
   bodyField().setSelectionRange = setBodySelection;
   bodyField().addEventListener("focus", () => {
+    finishInlineIdea(true);
     if (!bodyField().querySelector("[data-math-source], [data-editor-link]")) return;
     const selection = editorSelection();
     drawBody(bodyField().value);
@@ -701,12 +712,12 @@
     return token;
   }
   function repaintImages() {
-    for (const node of $("#j-project-compose-body").querySelectorAll("[data-image-token]")) {
+    for (const node of root.querySelectorAll("#j-project-compose-body [data-image-token], .j-inline-idea-editor [data-image-token]")) {
       const asset = imageAssets.get(node.dataset.imageToken);
       if (asset?.src && node.tagName !== "IMG" && !node.querySelector("img")) {
         const img = document.createElement("img");
         img.src = asset.src;
-        img.alt = asset.name; node.replaceChildren(img);
+        img.alt = asset.name; img.title = "单击查看原图"; img.draggable = false; node.replaceChildren(img);
       }
     }
     renderIdeaOverview();
@@ -736,7 +747,8 @@
         reader.readAsDataURL(file);
       });
       await decodeImage(src);
-      Object.assign(imageAssets.get(token), { src, status: "ready" });
+      const stored = window.journalNative ? await window.journalNative.call("storeOriginal",{src}) : src;
+      Object.assign(imageAssets.get(token), { src:stored, status: "ready" });
     } catch (error) {
       imageAssets.get(token).status = "failed";
       notify(error.message);
@@ -744,6 +756,112 @@
     repaintImages();
     if (window.journalNative) persist();
   }
+  const imageDialog = $("#j-image-dialog"), imageStage = $("#j-image-stage"), fullImage = $("#j-image-full");
+  let imagePreview = null, imageDrag = null, imageDragged = false;
+  function previewToken(target) {
+    const node = target.closest("[data-preview-image], [data-image-token]");
+    return node && (node.tagName === "IMG" || node.querySelector("img"))
+      ? node.dataset.previewImage || node.dataset.imageToken : null;
+  }
+  function fitImageScale() {
+    return Math.min(1, Math.max(1, imageStage.clientWidth - 32) / fullImage.naturalWidth,
+      Math.max(1, imageStage.clientHeight - 32) / fullImage.naturalHeight);
+  }
+  function zoomImage(scale, point, fit = false) {
+    if (!imagePreview || !fullImage.naturalWidth) return;
+    const bounds = imageStage.getBoundingClientRect(), surface = $("#j-image-surface");
+    const x = point ? point.x - bounds.left : imageStage.clientWidth / 2;
+    const y = point ? point.y - bounds.top : imageStage.clientHeight / 2;
+    const oldScale = imagePreview.scale;
+    const imageX = (imageStage.scrollLeft + x - Math.max(0, surface.clientWidth - fullImage.naturalWidth * oldScale) / 2) / oldScale;
+    const imageY = (imageStage.scrollTop + y - Math.max(0, surface.clientHeight - fullImage.naturalHeight * oldScale) / 2) / oldScale;
+    scale = Math.max(Math.min(.1, fitImageScale()), Math.min(8, scale));
+    imagePreview.scale = scale; imagePreview.fit = fit;
+    imageStage.style.setProperty("--image-width", `${fullImage.naturalWidth * scale}px`);
+    imageStage.style.setProperty("--image-height", `${fullImage.naturalHeight * scale}px`);
+    imageStage.scrollLeft = fit ? 0 : imageX * scale + Math.max(0, surface.clientWidth - fullImage.naturalWidth * scale) / 2 - x;
+    imageStage.scrollTop = fit ? 0 : imageY * scale + Math.max(0, surface.clientHeight - fullImage.naturalHeight * scale) / 2 - y;
+  }
+  function imageSourceReady(src){return /^data:image\/(png|jpeg|gif|webp|bmp|avif);base64,/i.test(src)||/^https:\/\/schedule-images\.local\/[a-f0-9]{64}\.(png|jpeg|gif|webp|avif|bmp|heic|heif)$/.test(src);}
+  function openImagePreview(token) {
+    const asset = imageAssets.get(token);
+    if (!asset?.src || !imageSourceReady(asset.src)) {
+      notify("图片尚未读取完成，或图片数据不可用。"); return;
+    }
+    clearTimeout(ideaClickTimer);
+    const field = document.activeElement;
+    imagePreview = {scale: 1, fit: true, field, selection: field === bodyField() ? editorSelection()
+      : field?.isContentEditable ? textSelection(field) : null};
+    const selection = window.getSelection();
+    if (field?.isContentEditable && selection?.rangeCount && field.contains(selection.anchorNode) && field.contains(selection.focusNode))
+      imagePreview.range = selection.getRangeAt(0).cloneRange();
+    imageStage.style.setProperty("--image-width", "0px"); imageStage.style.setProperty("--image-height", "0px");
+    fullImage.alt = asset.name || "图片";
+    fullImage.onload = () => {
+      if (!imagePreview) return;
+      zoomImage(fitImageScale(), null, true);
+    };
+    fullImage.onerror = () => {imageDialog.close(); notify("图片无法读取，原始数据未修改。");};
+    imageDragged = false;
+    imageDialog.showModal();
+    fullImage.src = asset.src;
+  }
+  // Keep the writing position intact while opening the preview.
+  root.addEventListener("pointerdown", e => {
+    if (e.button === 0 && !imageDialog.contains(e.target) && previewToken(e.target)) e.preventDefault();
+  }, true);
+  root.addEventListener("click", e => {
+    if (imageDialog.contains(e.target)) return;
+    const token = previewToken(e.target);
+    if (!token) return;
+    e.preventDefault(); e.stopPropagation(); openImagePreview(token);
+  }, true);
+  imageDialog.addEventListener("pointerdown", () => {imageDragged = false;}, true);
+  imageDialog.addEventListener("click", e => {
+    if (imageDragged) {imageDragged = false; return;}
+    const stage = imageStage.getBoundingClientRect();
+    if (e.clientX < stage.left || e.clientX > stage.right || e.clientY < stage.top || e.clientY > stage.bottom) {imageDialog.close(); return;}
+    if (e.target === imageStage && (e.clientX >= stage.left + imageStage.clientWidth || e.clientY >= stage.top + imageStage.clientHeight)) return;
+    const bounds = fullImage.getBoundingClientRect();
+    if (e.clientX < bounds.left || e.clientX > bounds.right || e.clientY < bounds.top || e.clientY > bounds.bottom) imageDialog.close();
+  });
+  imageStage.addEventListener("wheel", e => {
+    e.preventDefault();
+    zoomImage(imagePreview.scale * Math.exp(-Math.max(-200, Math.min(200, e.deltaY)) * .002), {x:e.clientX,y:e.clientY});
+  }, {passive:false});
+  imageStage.addEventListener("pointerdown", e => {
+    if (e.button !== 0) return;
+    imageDragged = false;
+    // Leave the native scrollbars available for keyboard and mouse use.
+    const b = imageStage.getBoundingClientRect();
+    if (e.clientX >= b.left + imageStage.clientWidth || e.clientY >= b.top + imageStage.clientHeight) return;
+    e.preventDefault(); imageStage.setPointerCapture(e.pointerId);
+    imageDrag = {x:e.clientX,y:e.clientY,left:imageStage.scrollLeft,top:imageStage.scrollTop};
+    imageStage.classList.add("is-dragging");
+  });
+  imageStage.addEventListener("pointermove", e => {
+    if (!imageDrag) return;
+    if (Math.hypot(e.clientX - imageDrag.x, e.clientY - imageDrag.y) > 4) imageDragged = true;
+    imageStage.scrollLeft = imageDrag.left + imageDrag.x - e.clientX;
+    imageStage.scrollTop = imageDrag.top + imageDrag.y - e.clientY;
+  });
+  for (const event of ["pointerup","pointercancel","lostpointercapture"]) imageStage.addEventListener(event, () => {
+    imageDrag = null; imageStage.classList.remove("is-dragging");
+  });
+  new ResizeObserver(() => {if (imagePreview?.fit) zoomImage(fitImageScale(), null, true);}).observe(imageStage);
+  imageDialog.addEventListener("close", () => {
+    const previous = imagePreview;
+    imagePreview = null; imageDrag = null; fullImage.onload = fullImage.onerror = null; fullImage.removeAttribute("src");
+    if (!previous?.field?.isConnected) return;
+    previous.field.focus({preventScroll:true});
+    if (previous.field === bodyField() && previous.selection) setBodySelection(previous.selection.start, previous.selection.end);
+    else if (previous.selection && previous.field.isContentEditable) {
+      // Preview leaves the editor DOM intact, so restore only its selection.
+      if (previous.range?.startContainer.isConnected && previous.range?.endContainer.isConnected) {
+        const native = window.getSelection(); native.removeAllRanges(); native.addRange(previous.range);
+      }
+    }
+  });
   function insertImages(files) {
     const accepted = files.filter((f) =>
       /^image\/(png|jpeg|gif|webp|bmp|avif)$/i.test(f.type),
@@ -821,9 +939,9 @@
               );
               trackImage(
                 decodeImage(src)
-                  .then(() => {
+                  .then(async () => {
                     Object.assign(imageAssets.get(next), {
-                      src,
+                      src: window.journalNative ? await window.journalNative.call("storeOriginal",{src}) : src,
                       status: "ready",
                     });
                     repaintImages();
@@ -1213,7 +1331,9 @@
     });
   }
   function switchView(filter) {
+    finishInlineIdea();
     finishProjectComposer();
+    if (filter !== state.filter) newIdeaProjects = [];
     rememberView();
     root.dataset.dayExpanded = "false"; state.dayExpanded = false;
     state.filter = filter;
@@ -1324,7 +1444,7 @@
         const result=await window.journalNative.call("importMarkdown");if(result.cancelled)return;
         let text=result.text;
         for(const image of result.images || []) {
-          const token=allocateImage(image.name);imageAssets.set(token,{name:image.name,src:image.src,status:"ready"});
+          const token=allocateImage(image.name),src=window.journalNative?await window.journalNative.call("storeOriginal",{src:image.src}):image.src;imageAssets.set(token,{name:image.name,src,status:"ready"});
           text=text.split(image.markdown).join(token);
         }
         const imported=window.ScheduleFeatures.importMarkdown(text), old=current().body;
@@ -1337,6 +1457,122 @@
     finally {dataBusy=false;button.disabled=false;}
   });
   $("#j-data-dialog").addEventListener("cancel",e=>{if(dataBusy)e.preventDefault();});
+  const bluetoothDialog = $("#j-bluetooth-dialog"), bluetoothDevice = $("#j-bluetooth-device"), bluetoothStatus = $("#j-bluetooth-status");
+  let bluetoothBusy = false, bluetoothListing = false, syncReview = null;
+  window.addEventListener("journal:sync-progress",event=>{if(bluetoothBusy)bluetoothStatus.textContent=event.detail;});
+  async function loadSyncReview() {
+    syncReview = await window.journalNative.call("loadSyncReview");
+    renderSyncReview();
+  }
+  function renderSyncReview() {
+    const host = $("#j-sync-review");host.replaceChildren();host.hidden = !syncReview;
+    bluetoothDialog.classList.toggle("has-review",!!syncReview);
+    $("#j-bluetooth-open").classList.toggle("needs-review",!!syncReview);
+    if(!syncReview)return;
+    const heading=document.createElement("h3");heading.textContent="同步待确认";
+    const hint=document.createElement("p");hint.setAttribute("role","alert");
+    hint.textContent="本次同步已暂停，两端内容均保留。请逐项选择，确认后重新连接并检查最新改动。仍被想法引用的项目需要保留，或先解除绑定。";
+    host.append(heading,hint);
+    const choices={...syncReview.decisions};
+    for(const [key,conflict] of Object.entries(syncReview.conflicts)) {
+      const field=document.createElement("fieldset"),legend=document.createElement("legend");
+      const value=conflict.desktop||conflict.phone||conflict.base;
+      const kind=key.split("/")[0],names={idea:"想法",note:"当日笔记",event:"日程",project:"项目"};
+      legend.textContent=`${names[kind]||kind} · ${value.date||value.key?.split("/")[0]||value.name||key}`;
+      field.append(legend);
+      const columns=document.createElement("div");columns.className="j-sync-versions";
+      for(const side of ["desktop","phone"]) {
+        const label=document.createElement("label"),radio=document.createElement("input"),title=document.createElement("strong"),pre=document.createElement("pre"),item=conflict[side];
+        radio.type="radio";radio.name="sync-"+key;radio.value=side;radio.checked=choices[key]===side;
+        radio.disabled=bluetoothBusy||(side==="phone"&&kind==="event"&&(conflict.base?.locked||conflict.desktop?.locked));
+        title.textContent=side==="desktop"?"保留电脑版本":"保留手机版本";
+        // Plain text prevents imported notes from injecting markup into the review.
+        pre.textContent=item===null?"已删除":[item.name,item.title,item.text?.replace(/!\[[^\]]*\]\(schedule-image:[^)]+\)/g,"[图片]"),
+          item.time&&`时间：${item.key?.split("/")[0]||""} ${item.time}`,
+          item.minutes!==undefined&&`提醒：${item.minutes<0?"不提醒":`提前 ${item.minutes} 分钟`}`,
+          item.state&&`状态：${{note:"笔记",todo:"待办",done:"已完成"}[item.state]}`,
+          item.done!==undefined&&`状态：${item.done?"已完成":"未完成"}`,
+          item.important!==undefined&&`重要：${item.important?"是":"否"}`,
+          item.due&&`截止：${item.due}`,
+          item.projects&&`项目：${item.projects.map(id=>projectById(id)?.name||id).join("、")||"未绑定"}`,
+          item.formats?.length&&`文字格式：${JSON.stringify(item.formats)}`].filter(Boolean).join("\n");
+        radio.addEventListener("change",()=>{choices[key]=side;syncReview.decisions=choices;updateBluetoothControls();});
+        label.append(radio,title,pre);
+        for(const match of (item?.text||"").matchAll(/schedule-image:([a-f0-9]{64}\.(?:png|jpeg|gif|webp|avif|bmp|heic|heif))/g)) {
+          const src=syncReview.assets?.[match[1]];if(!src)continue;
+          const img=document.createElement("img");img.src=src.ref===true?`https://schedule-images.local/${match[1]}`:`data:${src.mime};base64,${src.data}`;img.alt="冲突记录中的原图";label.append(img);
+        }
+        if(radio.disabled&&!bluetoothBusy){const note=document.createElement("small");note.textContent="关联想法的日程由电脑维护，请保留电脑版本。";label.append(note);}
+        columns.append(label);
+      }
+      field.append(columns);host.append(field);
+    }
+    const approve=document.createElement("button");approve.type="button";approve.id="j-sync-approve";approve.className="j-small-button solid";approve.textContent="确认并继续同步";
+    approve.addEventListener("click",async()=>{
+      try {
+        syncReview=await window.journalNative.call("approveSyncReview",{id:syncReview.id,decisions:syncReview.decisions||{}});
+        bluetoothDevice.value=syncReview.peer;
+        if(!bluetoothDevice.value){bluetoothStatus.textContent="请先重新配对原手机，再继续同步。";return;}
+        await runBluetoothSync();
+      }catch(error){bluetoothStatus.textContent=error.message;}
+    });
+    host.append(approve);updateBluetoothControls();
+  }
+  function updateBluetoothControls() {
+    bluetoothDevice.disabled = bluetoothBusy || bluetoothListing;
+    $("#j-sync-wifi").disabled=bluetoothBusy;
+    $("#j-bluetooth-refresh").disabled = bluetoothBusy || bluetoothListing;
+    $("#j-bluetooth-sync").disabled = bluetoothBusy || bluetoothListing || !bluetoothDevice.value;
+    $("#j-bluetooth-sync").textContent = bluetoothBusy ? "正在同步…" : "双向同步";
+    const approve=$("#j-sync-approve");
+    if(approve)approve.disabled=bluetoothBusy||bluetoothListing||Object.keys(syncReview.conflicts).some(key=>!syncReview.decisions?.[key]);
+    $("#j-sync-review").inert=bluetoothBusy;
+  }
+  async function refreshBluetoothDevices() {
+    if (bluetoothBusy || bluetoothListing) return;
+    bluetoothListing = true; updateBluetoothControls();
+    const previous = bluetoothDevice.value;
+    bluetoothStatus.textContent = "正在读取已配对设备…";
+    try {
+      const devices = await window.journalNative.call("bluetoothDevices");
+      bluetoothDevice.replaceChildren(new Option("选择手机", ""));
+      for (const device of devices) bluetoothDevice.add(new Option(`${device.name} · ${device.address}`, device.address));
+      if (devices.some(device => device.address === previous)) bluetoothDevice.value = previous;
+      bluetoothStatus.textContent = devices.length ? "选择手机后同步。" : "没有已配对的设备，请先在系统蓝牙设置中配对。";
+    } catch (error) {
+      bluetoothDevice.replaceChildren(new Option("设备列表读取失败", ""));
+      bluetoothStatus.textContent = error.message;
+    } finally {bluetoothListing = false; updateBluetoothControls();}
+  }
+  $("#j-bluetooth-open").hidden = !window.journalNative;
+  $("#j-bluetooth-open").addEventListener("click", () => {
+    bluetoothDialog.showModal();
+    loadSyncReview().catch(error=>{bluetoothStatus.textContent=error.message;});
+    if (!bluetoothBusy) refreshBluetoothDevices();
+  });
+  $("#j-bluetooth-close").addEventListener("click", () => bluetoothDialog.close());
+  $("#j-bluetooth-refresh").addEventListener("click", refreshBluetoothDevices);
+  bluetoothDevice.addEventListener("change", updateBluetoothControls);
+  $("#j-bluetooth-settings").addEventListener("click", () => {
+    window.journalNative.call("bluetoothSettings").catch(error => {bluetoothStatus.textContent = error.message;});
+  });
+  async function runBluetoothSync() {
+    if (bluetoothBusy || bluetoothListing || !bluetoothDevice.value) return;
+    const address = bluetoothDevice.value;
+    bluetoothBusy = true; updateBluetoothControls();
+    bluetoothStatus.textContent = "正在连接并同步，请保持手机停留在等待连接页面…";
+    try {
+      const result = await window.journalNative.call("bluetoothSync", {address,wifi:$("#j-sync-wifi").checked});
+      bluetoothStatus.textContent = result.message;
+    } catch (error) {
+      bluetoothStatus.textContent = `同步未完成，请确认手机仍在等待连接后重试。${error.message}`;
+    } finally {
+      bluetoothBusy = false;updateBluetoothControls();
+      await loadSyncReview().catch(error=>{bluetoothStatus.textContent=error.message;});
+    }
+  }
+  $("#j-bluetooth-sync").addEventListener("click",runBluetoothSync);
+  if(window.journalNative)loadSyncReview().catch(error=>console.error(error));
   function renderIdeaOverview() {
     const important = state.filter === "important";
     const searching = state.filter === "search";
@@ -1373,6 +1609,7 @@
     $("#j-overview-tools").innerHTML = project
       ? `<button type="button" class="j-icon" data-project-open="${esc(project.id)}" aria-label="打开项目文件夹" ${project.root ? "" : "disabled"}><i data-lucide="folder-open" aria-hidden="true"></i></button><button type="button" class="j-icon" data-project-edit="${esc(project.id)}" aria-label="编辑项目"><i data-lucide="settings-2" aria-hidden="true"></i></button>`
       : "";
+    if (inlineIdeaEditor?.view === state.filter && inlineIdeaEditor.field.isConnected) return;
     let html = "",
       lastDate = "";
     for (const { date, idea: p } of shown) {
@@ -1386,7 +1623,7 @@
         .map((id) => projectById(id)?.name)
         .filter(Boolean);
       if (ideaBadge(p)) html += `<button type="button" class="j-idea-badge" data-idea-settings="${esc(p.id)}" data-idea-day="${date}">${esc(ideaBadge(p))}</button>`;
-      html += `<article class="j-overview-idea ${p.done ? "is-done" : ""}" data-idea-id="${esc(p.id)}" data-idea-date="${date}"><button type="button" class="j-overview-check" data-complete-id="${esc(p.id)}" data-idea-day="${date}" aria-label="${p.done ? "取消完成" : "标记完成"}" aria-pressed="${!!p.done}">${p.done ? "✓" : window.ScheduleState.taskState(p) === "todo" ? "☐" : "•"}</button><div class="j-idea-content"><div class="j-idea-text">${overviewContent(p, date)}</div><div class="j-idea-bindings">${esc(names.join(" · ") || "未绑定项目")}</div></div><button type="button" class="j-binding-button" data-bind-idea="${esc(p.id)}" data-idea-day="${date}" aria-label="修改此想法的项目">${names.length ? "项目" : "绑定"}</button></article>`;
+      html += `<article class="j-overview-idea ${p.done ? "is-done" : ""}" data-idea-id="${esc(p.id)}" data-idea-date="${date}"><button type="button" class="j-overview-check" data-complete-id="${esc(p.id)}" data-idea-day="${date}" aria-label="${p.done ? "取消完成" : "标记完成"}" aria-pressed="${!!p.done}">${p.done ? "✓" : window.ScheduleState.taskState(p) === "todo" ? "☐" : "•"}</button><div class="j-idea-content"><div class="j-idea-text">${overviewContent(p, date)}</div></div><button type="button" class="j-binding-button" data-bind-idea="${esc(p.id)}" data-idea-day="${date}" title="${esc(names.join(" · ") || "未绑定项目")}" aria-label="修改此想法的项目">${names.length ? "项目" : "绑定"}</button></article>`;
     }
     if (lastDate) html += overviewResources(lastDate) + "</section>";
     $("#j-overview-list").innerHTML =
@@ -1397,12 +1634,13 @@
   function finishProjectComposer() {
     // Input events already update the shared record. Clearing only the editor
     // leaves saved ideas, image loads and other projects' records untouched.
+    projectEditorController?.flush();
     projectComposer = null;
-    projectComposing = false;
     $("#j-project-compose-body").replaceChildren();
+    projectEditorController?.reset();
     $("#j-project-compose-status").textContent = "自动保存到今天";
   }
-  function saveProjectComposer() {
+  function saveProjectComposer(edit) {
     const field = $("#j-project-compose-body"), text = serializeEditor(field).replace(/^• ?/, "");
     if (!projectComposer && !text.trim()) return;
     if (!projectComposer) {
@@ -1417,13 +1655,14 @@
       const start = range.offset + 2;
       const end = start + projectComposer.text.length;
       const next = body.slice(0, start) + text + body.slice(end);
-      formats = textFormats.replace(formats, body, next, {start, end, newEnd: start + text.length});
+      formats = textFormats.replace(formats, body, next, {start, end, newEnd: start + text.length}, undefined, edit?.formats);
       for (const other of ideas) if (other.offset >= end && other.id !== id) other.offset += text.length - (end - start);
       body = next;
     } else {
       const prefix = body && !body.endsWith("\n") ? "\n" : "";
       idea = {id, offset: body.length + prefix.length, done: false, projectIds: projectById(project) ? [project] : []};
       body += prefix + "• " + text; ideas.push(idea);
+      if (edit?.formats?.length) formats = [...(formats || []), ...edit.formats.map(r => ({...r, start: r.start + idea.offset + 2, end: r.end + idea.offset + 2}))];
     }
     const next = {...record, body, ideas, source: "手动记录", kind: "journal"};
     projectComposer.text = text;
@@ -1435,39 +1674,184 @@
     renderCalendar();
     clearTimeout(saveTimer); saveTimer = setTimeout(() => Promise.resolve(persist()).catch(() => {}), 300);
   }
-  function insertProjectContent(node) {
-    const field = $("#j-project-compose-body"), selection = window.getSelection();
-    field.focus();
-    const range = selection.rangeCount && field.contains(selection.anchorNode) && field.contains(selection.focusNode)
-      ? selection.getRangeAt(0) : document.createRange();
-    if (!field.contains(range.startContainer)) { range.selectNodeContents(field); range.collapse(false); }
-    range.deleteContents(); range.insertNode(node); range.setStartAfter(node); range.collapse(true);
-    selection.removeAllRanges(); selection.addRange(range); saveProjectComposer();
+  function textSelection(field) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || !field.contains(selection.anchorNode) || !field.contains(selection.focusNode)) {
+      const end = serializeEditor(field).length;
+      return {start: end, end};
+    }
+    const range = selection.getRangeAt(0);
+    const offset = (node, at) => {
+      const before = document.createRange();
+      before.selectNodeContents(field); before.setEnd(node, at);
+      return serializeEditor(before.cloneContents()).length;
+    };
+    return {start: offset(range.startContainer, range.startOffset), end: offset(range.endContainer, range.endOffset)};
   }
-  $("#j-project-compose-body").addEventListener("input", saveProjectComposer);
-  $("#j-project-compose-body").addEventListener("compositionstart", () => { projectComposing = true; });
-  $("#j-project-compose-body").addEventListener("compositionend", () => { projectComposing = false; saveProjectComposer(); });
-  $("#j-project-compose-body").addEventListener("keydown", e => {
-    if (e.key === "Enter" && e.shiftKey && !e.isComposing && !projectComposing) {
-      e.preventDefault(); saveProjectComposer(); finishProjectComposer(); renderCalendar();
-      $("#j-project-compose-body").focus(); Promise.resolve(persist()).catch(() => {});
-    }
-  });
-  $("#j-project-compose-body").addEventListener("paste", e => {
-    if (projectComposing) return;
-    e.preventDefault();
-    const files = Array.from(e.clipboardData.files).filter(f => /^image\/(png|jpeg|gif|webp|bmp|avif)$/i.test(f.type));
-    if (files.length) {
-      for (const file of files) {
-        const token = allocateImage(file.name || "粘贴的图片"), node = document.createElement("span");
-        node.dataset.imageToken = token; node.contentEditable = "false"; node.textContent = "正在插入图片…";
-        insertProjectContent(node); trackImage(loadImage(token, file));
+  function drawTextEditor(field, text, formats, selection) {
+    const fragment = document.createDocumentFragment();
+    for (const part of textFormats.segments(text, formats)) {
+      const span = document.createElement("span");
+      span.dataset.textFormat = "true"; span.style.cssText = textFormats.css(part.style);
+      for (const chunk of part.text.split(/([\uE000-\uF8FF]|\n)/)) {
+        if (chunk === "\n") span.append(document.createElement("br"));
+        else if (/^[\uE000-\uF8FF]$/.test(chunk)) {
+          const node = document.createElement("span"), asset = imageAssets.get(chunk);
+          node.dataset.imageToken = chunk; node.contentEditable = "false";
+          if (asset?.src) {const img = document.createElement("img"); img.src = asset.src; img.alt = asset.name || "图片"; img.title = "单击查看原图"; img.draggable = false; node.append(img);}
+          else node.textContent = "正在插入图片…";
+          span.append(node);
+        } else span.append(document.createTextNode(chunk));
       }
-    } else {
-      // A pasted multiline note stays one idea; Shift+Enter creates the next one.
-      const text = e.clipboardData.getData("text/plain").replace(/\r\n?/g, "\n").replace(/^• /gm, "  • ");
-      insertProjectContent(document.createTextNode(text));
+      fragment.append(span);
     }
+    if (text.endsWith("\n")) {const br = document.createElement("br"); br.dataset.caretEnd = "true"; fragment.append(br);}
+    field.replaceChildren(fragment);
+    if (!selection) return;
+    const locate = (container, position) => {
+      let used = 0;
+      for (let i = 0; i < container.childNodes.length; i++) {
+        const node = container.childNodes[i], size = serializeEditor(node).length;
+        if (node.nodeType === 3 && position <= used + size) return [node, Math.max(0, position - used)];
+        if (node.nodeType === 1 && node.dataset.textFormat && position <= used + size) return locate(node, position - used);
+        if (position === used) return [container, i];
+        if (position <= used + size) return [container, i + 1];
+        used += size;
+      }
+      return [container, container.childNodes.length];
+    };
+    const range = document.createRange();
+    range.setStart(...locate(field, selection.start)); range.setEnd(...locate(field, selection.end));
+    const native = window.getSelection(); native.removeAllRanges(); native.addRange(range);
+  }
+  // Small editors share explicit history so structural Tab edits, paste and
+  // ordinary typing remain undoable together, including formatting and images.
+  function attachIdeaEditor(field, options) {
+    let formats = options.formats || [], previous = null, composingHere = false;
+    const undo = [], redo = [];
+    const snapshot = () => ({text: serializeEditor(field), formats: structuredClone(formats), ...textSelection(field)});
+    let settled = snapshot();
+    const publish = () => {settled = snapshot(); options.onChange(settled);};
+    const remember = before => {if (before.text !== serializeEditor(field)) {undo.push(before); if (undo.length > 150) undo.shift(); redo.length = 0;}};
+    const replace = (start, end, text) => {
+      const before = snapshot(), next = before.text.slice(0, start) + text + before.text.slice(end);
+      formats = textFormats.replace(formats, before.text, next, {start, end, newEnd: start + text.length});
+      drawTextEditor(field, next, formats, {start: start + text.length, end: start + text.length});
+      remember(before); publish();
+    };
+    field.addEventListener("beforeinput", () => {if (!composingHere) previous = snapshot();});
+    field.addEventListener("input", () => {
+      if (composingHere) return;
+      const before = previous || settled, next = serializeEditor(field);
+      formats = textFormats.replace(before.formats, before.text, next);
+      remember(before); previous = null; publish();
+    });
+    field.addEventListener("compositionstart", () => {previous = snapshot(); composingHere = true;});
+    field.addEventListener("compositionend", () => {
+      composingHere = false;
+      const before = previous || settled;
+      formats = textFormats.replace(before.formats, before.text, serializeEditor(field));
+      remember(before); previous = null; publish();
+    });
+    field.addEventListener("keydown", e => {
+      if (composingHere || e.isComposing || e.keyCode === 229) return;
+      if ((e.ctrlKey || e.metaKey) && ["z", "y"].includes(e.key.toLowerCase())) {
+        e.preventDefault(); e.stopPropagation();
+        const forwards = e.key.toLowerCase() === "y" || e.shiftKey, from = forwards ? redo : undo, to = forwards ? undo : redo;
+        if (!from.length) return;
+        to.push(snapshot()); const saved = from.pop(); formats = saved.formats;
+        drawTextEditor(field, saved.text, formats, saved); previous = null; publish(); return;
+      }
+      if (e.key === "Escape" && options.onDone) {e.preventDefault(); e.stopPropagation(); options.onDone(); return;}
+      if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault(); e.stopPropagation();
+        const before = snapshot(), change = window.ScheduleContent.indent(before.text, before.start, before.end, e.shiftKey);
+        let text = before.text;
+        for (const edit of change.edits.reverse()) {
+          const next = text.slice(0, edit.start) + edit.text + text.slice(edit.end);
+          formats = textFormats.replace(formats, text, next, {...edit, newEnd: edit.start + edit.text.length}); text = next;
+        }
+        drawTextEditor(field, text, formats, change); remember(before); publish(); return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (e.shiftKey && options.onNext) {options.onNext(); return;}
+        const {text, start, end} = snapshot(), line = text.slice(text.lastIndexOf("\n", start - 1) + 1, start);
+        replace(start, end, "\n" + (/^[\t ]*/.exec(line)?.[0] || ""));
+      }
+    });
+    field.addEventListener("paste", e => {
+      if (composingHere) return;
+      e.preventDefault();
+      const files = Array.from(e.clipboardData.files).filter(f => /^image\/(png|jpeg|gif|webp|bmp|avif)$/i.test(f.type));
+      const {start, end} = textSelection(field);
+      if (files.length) {
+        const images = files.map(file => ({file, token: allocateImage(file.name || "粘贴的图片")}));
+        replace(start, end, images.map(i => i.token).join(""));
+        for (const {file, token} of images) trackImage(loadImage(token, file));
+      } else replace(start, end, e.clipboardData.getData("text/plain").replace(/\r\n?/g, "\n").replace(/^• /gm, "  • "));
+    });
+    return {
+      get isComposing() {return composingHere;},
+      flush() {
+        if (settled.text === serializeEditor(field)) return;
+        const before = previous || settled;
+        formats = textFormats.replace(before.formats, before.text, serializeEditor(field));
+        remember(before); publish();
+      },
+      reset() {formats = []; previous = null; composingHere = false; undo.length = redo.length = 0; settled = snapshot();},
+    };
+  }
+  function finishInlineIdea(renderList = false) {
+    clearTimeout(ideaClickTimer);
+    if (!inlineIdeaEditor) return;
+    inlineIdeaEditor.controller?.flush();
+    inlineIdeaEditor = null;
+    if (renderList) renderIdeaOverview();
+  }
+  function beginInlineIdea(date, id) {
+    clearTimeout(ideaClickTimer);
+    if (inlineIdeaEditor?.id === id && inlineIdeaEditor.date === date) return;
+    finishInlineIdea(true); finishProjectComposer();
+    const record = records[date], idea = record?.ideas.find(p => p.id === id);
+    const range = idea && ideaRanges(record.body).find(p => p.offset === idea.offset);
+    const row = $$(".j-overview-idea").find(node => node.dataset.ideaId === id && node.dataset.ideaDate === date);
+    if (!range || !row) return;
+    const field = document.createElement("div"), actions = document.createElement("div"), done = document.createElement("button");
+    field.className = "j-inline-idea-editor"; field.contentEditable = "true";
+    field.setAttribute("role", "textbox"); field.setAttribute("aria-label", "编辑这条想法"); field.setAttribute("aria-multiline", "true");
+    actions.className = "j-inline-idea-actions";
+    const hint = document.createElement("span"); hint.textContent = "自动保存 · Tab 缩进 · ⇧ Tab 退一级";
+    done.type = "button"; done.className = "j-text-button"; done.textContent = "完成编辑";
+    done.addEventListener("click", () => finishInlineIdea(true)); actions.append(hint, done);
+    row.querySelector(".j-idea-text").replaceChildren(field, actions);
+    const start = range.offset + (record.body.startsWith("• ", range.offset) ? 2 : 1), text = record.body.slice(start, range.end);
+    const formats = textFormats.slice(record.formats, start, range.end);
+    inlineIdeaEditor = {date, id, view: state.filter, field};
+    drawTextEditor(field, text, formats); field.focus({preventScroll: true}); drawTextEditor(field, text, formats, {start: text.length, end: text.length});
+    inlineIdeaEditor.controller = attachIdeaEditor(field, {formats, onDone: () => finishInlineIdea(true), onChange: edit => {
+      const currentRecord = records[date], ideas = copyIdeas(currentRecord.ideas), target = ideas.find(p => p.id === id);
+      const currentRange = target && ideaRanges(currentRecord.body).find(p => p.offset === target.offset);
+      if (!currentRange) {finishInlineIdea(true); return;}
+      const a = currentRange.offset + (currentRecord.body.startsWith("• ", currentRange.offset) ? 2 : 1), b = currentRange.end;
+      const body = currentRecord.body.slice(0, a) + edit.text + currentRecord.body.slice(b);
+      for (const other of ideas) if (other.offset >= b && other.id !== id) other.offset += edit.text.length - (b - a);
+      const next = {...currentRecord, body, ideas, formats: textFormats.replace(currentRecord.formats, currentRecord.body, body, {start: a, end: b, newEnd: a + edit.text.length}, undefined, edit.formats)};
+      records[date] = next; state.edits[date] = next; bodyHistory.delete(date);
+      if (state.selected === date) {bodyField().value = body; updateIdeaUI();}
+      renderCalendar(); clearTimeout(saveTimer); saveTimer = setTimeout(() => Promise.resolve(persist()).catch(() => {}), 300);
+    }});
+  }
+  projectEditorController = attachIdeaEditor($("#j-project-compose-body"), {
+    onChange: saveProjectComposer,
+    onNext: () => {finishProjectComposer(); renderCalendar(); $("#j-project-compose-body").focus(); Promise.resolve(persist()).catch(() => {});},
+  });
+  $("#j-project-compose-body").addEventListener("focus", () => finishInlineIdea(true));
+  $("#j-overview-list").addEventListener("dblclick", e => {
+    if (e.target.closest(".j-inline-idea-editor, .j-inline-idea-actions, [data-external-url], [data-inline-path]")) return;
+    const row = e.target.closest(".j-overview-idea");
+    if (!row || !e.target.closest(".j-idea-text")) return;
+    e.preventDefault(); beginInlineIdea(row.dataset.ideaDate, row.dataset.ideaId);
   });
   $(".j-ideas-pane").addEventListener("click", e => {
     if (!$("#j-project-compose").hidden && (e.target === $(".j-ideas-pane") || e.target === $("#j-overview-list")))
@@ -1485,9 +1869,9 @@
           const asset = imageAssets.get(part.token);
           if (
             asset?.src &&
-            /^data:image\/(png|jpeg|gif|webp|bmp|avif);base64,/i.test(asset.src)
+            imageSourceReady(asset.src)
           )
-            return `<button type="button" class="j-idea-image" ${open} aria-label="查看图片所在想法"><img src="${esc(asset.src)}" alt="${esc(asset.name || "粘贴的图片")}" loading="lazy"></button>`;
+            return `<button type="button" class="j-idea-image" data-preview-image="${esc(part.token)}" aria-label="预览原图" title="单击查看原图"><img src="${esc(asset.src)}" alt="${esc(asset.name || "粘贴的图片")}" loading="lazy"></button>`;
           const status =
             asset?.status === "loading"
               ? "正在插入图片…"
@@ -1563,7 +1947,7 @@
       .sort((a, b) => counts.get(b.id).pending - counts.get(a.id).pending)
       .map(
         (p) =>
-          `<button type="button" class="j-nav j-project ${state.filter === p.id ? "is-active" : ""}" data-filter="${esc(p.id)}" title="${esc(p.name)} · ${counts.get(p.id).total} 个想法，${counts.get(p.id).pending} 个未完成"><span class="j-project-dot"></span><span>${esc(p.name)} <small class="j-project-count">(${counts.get(p.id).total})</small></span></button>`,
+          `<button type="button" class="j-nav j-project ${state.filter === p.id ? "is-active" : ""}" data-filter="${esc(p.id)}" aria-keyshortcuts="F2 Shift+F10" title="${esc(p.name)} · ${counts.get(p.id).total} 个想法，${counts.get(p.id).pending} 个未完成 · 右键编辑名称和文件夹"><span class="j-project-dot"></span><span>${esc(p.name)} <small class="j-project-count">(${counts.get(p.id).total})</small></span></button>`,
       )
       .join("");
     $(".j-unbound-count").textContent = projectIdeaRows("unbound").length;
@@ -1582,18 +1966,46 @@
         .filter(Boolean)
         .join("、") || "未绑定") +
       " ▾";
+    $("#j-entry-project").title = $("#j-entry-project").textContent;
   }
   function renderBindingOptions() {
+    if ($("#j-project-picker").hidden) return;
     const ids = selectedBindingIds();
+    const options = $("#j-project-options");
+    const key = JSON.stringify([pickerTarget, projects.map(p => p.id)]);
+    if (pickerOrder?.key !== key) {
+      const usage = new Map(projects.map(p => [p.id, { date: "", count: 0 }]));
+      for (const [date, record] of Object.entries(records)) {
+        for (const idea of visibleIdeas(record)) {
+          for (const id of new Set(idea.projectIds)) {
+            const item = usage.get(id);
+            if (item) { item.date = item.date > date ? item.date : date; item.count++; }
+          }
+        }
+      }
+      // Rank once per opening/target so checking a box never moves the next option.
+      pickerOrder = { key, ids: [...projects].sort((a, b) =>
+        Number(ids.includes(b.id)) - Number(ids.includes(a.id)) ||
+        usage.get(b.id).date.localeCompare(usage.get(a.id).date) ||
+        usage.get(b.id).count - usage.get(a.id).count
+      ).map(p => p.id) };
+      options.scrollTop = 0;
+    }
     $("#j-picker-title").textContent = pickerTarget
       ? "这个想法的项目"
-      : "新想法的项目";
-    $("#j-project-options").innerHTML = projects
+      : "下一条想法的项目";
+    const markup = pickerOrder.ids.map(projectById)
       .map(
         (p) =>
-          `<label class="j-project-choice"><input type="checkbox" data-link-project="${esc(p.id)}" ${ids.includes(p.id) ? "checked" : ""}><span>${esc(p.name)}<small>${esc(p.root || "暂未关联文件夹")}</small></span></label>`,
+          `<label class="j-project-choice" title="${esc(p.name)}&#10;${esc(p.root || "暂未关联文件夹")}"><input type="checkbox" data-link-project="${esc(p.id)}"><span><span class="j-project-choice-name">${esc(p.name)}</span><small>${esc(p.root || "暂未关联文件夹")}</small></span></label>`,
       )
       .join("");
+    if (markup !== pickerMarkup) {
+      options.innerHTML = markup;
+      pickerMarkup = markup;
+    }
+    for (const input of options.querySelectorAll("input[data-link-project]"))
+      input.checked = ids.includes(input.dataset.linkProject);
   }
   function setBindingIds(ids) {
     ids = [...new Set(ids)].filter((id) => projectById(id));
@@ -1629,6 +2041,7 @@
   }
   function openBindingPicker(target = null) {
     pickerTarget = target;
+    pickerOrder = null;
     $("#j-project-picker").hidden = false;
     $("#j-entry-project").setAttribute("aria-expanded", "true");
     renderProjects();
@@ -1660,6 +2073,26 @@
     $("#j-project-dialog").showModal();
     $("#j-project-name").focus();
   }
+  function editSidebarProject(e) {
+    const button = e.target.closest("button[data-filter]");
+    if (!button || !projectById(button.dataset.filter)) return;
+    e.preventDefault();
+    sidebarProjectReturnId = button.dataset.filter;
+    button.focus({ preventScroll: true });
+    openProjectDialog(sidebarProjectReturnId);
+    $("#j-project-name").select();
+  }
+  $("#j-project-nav").addEventListener("contextmenu", editSidebarProject);
+  $("#j-project-nav").addEventListener("keydown", e => {
+    if (e.key === "F2" || e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey))
+      editSidebarProject(e);
+  });
+  $("#j-project-dialog").addEventListener("close", () => {
+    if (!sidebarProjectReturnId) return;
+    $$("#j-project-nav [data-filter]").find(b => b.dataset.filter === sidebarProjectReturnId)
+      ?.focus({ preventScroll: true });
+    sidebarProjectReturnId = null;
+  });
   function pathSuggestion() {
     const p = projectForPath($("#j-path-input").value),
       label = $("#j-path-project");
@@ -1760,7 +2193,7 @@
       dayExpanded: state.dayExpanded,
       sidebarScroll: state.sidebarScroll,
       projects,
-      newIdeaProjects,
+      newIdeaProjects: [],
       edits: state.edits,
     };
     if (window.journalNative) {
@@ -1842,9 +2275,7 @@
       p.filter;
     if (["all", "important", "unbound", "search", "todo"].includes(filter) || projectById(filter))
       state.filter = filter;
-    newIdeaProjects = Array.isArray(p.newIdeaProjects)
-      ? p.newIdeaProjects.filter((id) => projectById(id))
-      : [];
+    newIdeaProjects = [];
     state.query = String(p.query || "");
     state.sidebar = p.sidebar;
     state.dayExpanded = p.dayExpanded === true;
@@ -2244,6 +2675,8 @@
   window.journalFlush = async () => {
     await Promise.all([...imageLoads, ...pathLoads]);
     if (composing) changeRecord({ body: bodyField().value });
+    projectEditorController?.flush();
+    inlineIdeaEditor?.controller?.flush();
     clearTimeout(saveTimer);
     return persist();
   };
@@ -2263,19 +2696,66 @@
   }
   async function executeApi(request) {
     if(!request || typeof request!=="object")throw Error("INVALID_REQUEST");
-    const operations=["capabilities","list_projects","get_day","get_project","search","add_idea","update_idea","create_project","save_event","delete_event"];
+    const operations=["capabilities","list_projects","get_day","get_project","search","add_idea","update_idea","create_project","save_event","delete_event","sync_journal","sync_inventory"];
     if(!operations.includes(request.op))throw Error("UNKNOWN_OPERATION");
-    if(apiBusy||composing||projectComposing||scheduleBusy||dataBusy||root.querySelector("dialog[open]"))throw Error("BUSY: finish the current edit or dialog before calling the API");
+    if(apiBusy||composing||projectEditorController?.isComposing||inlineIdeaEditor?.controller?.isComposing||scheduleBusy||dataBusy||root.querySelector("dialog[open]:not(#j-bluetooth-dialog)"))throw Error("BUSY: finish the current edit or dialog before calling the API");
     const activeElement=document.activeElement, activeSelection=editorSelection();
     apiBusy=true;root.inert=true;
     let rollback=null;
     try {
       await window.journalFlush();
       const revision=await apiRevision();
-      const write=["add_idea","update_idea","create_project","save_event","delete_event"].includes(request.op);
-      if(write && request.revision!==revision)throw Error("CONFLICT: read current state and reapply the intended change");
+      const write=["add_idea","update_idea","create_project","save_event","delete_event","sync_journal"].includes(request.op);
+      if(write && request.op!=="sync_journal" && request.revision!==revision)throw Error("CONFLICT: read current state and reapply the intended change");
       let result;
       if(request.op==="capabilities")result={version:1,operations,processId:window.__journalBoot.processId,appDirectory:window.__journalBoot.appDirectory,dataDirectory:window.__journalBoot.dataDirectory,writeRule:"Read, then send the returned revision. A conflict requires a fresh read; never overwrite journal.json.",transport:"same-user Windows named pipe"};
+      else if(request.op==="sync_inventory")result=Object.keys(await window.journalNative.call("prepareSyncAssets",(await window.ScheduleSyncModel.desktopExport(records,projects,imageAssets)).assets));
+      else if(request.op==="sync_journal") {
+        const model=window.ScheduleSyncModel, payload=request.payload;
+        if(!payload||payload.schema!==2)throw Error("Unsupported journal sync version");
+        const local=await model.desktopExport(records,projects,imageAssets);
+        const addEvents=target=>{
+          for(const key of Object.keys(target))if(key.startsWith("event/"))delete target[key];
+          for(const [date,r] of Object.entries(records))for(const s of eventsFor(r)) {
+            const key=date+"/"+s.id;
+            target["event/"+key]={key,title:s.title,time:s.time,at:new Date(s.at).getTime(),minutes:s.remindMinutes,done:!!s.done,important:!!s.important,locked:!!s.ideaId||s.id==="legacy-"+date};
+          }
+        };
+        addEvents(local.entities);
+        await model.validateAssets({...local.assets,...payload.assets},payload.entities);
+        const raw=model.merge(payload.base,local.entities,payload.entities), assets=await window.journalNative.call("prepareSyncAssets",{...local.assets,...payload.assets});
+        const review=await window.journalNative.call("loadSyncReview"),merged=model.resolveReview(raw,review,request.peer,{base:payload.base,desktop:local.entities,phone:payload.entities});
+        // Reserve room for source and reminder diagnostics before any durable
+        // write, so a combined reply cannot exceed the transport after commit.
+        const replyBytes=new TextEncoder().encode(JSON.stringify({schema:2,...merged,assets})).length;
+        if(!payload.batchedAssets && replyBytes+await window.journalNative.call("legacyAssetBytes",assets)>99*1024*1024)
+          throw Error("旧版手机不支持大批量原图。请覆盖安装新版手机端后重试，记录尚未写入。 / Update Android to enable batched originals; no records were changed.");
+        if(replyBytes>99*1024*1024)
+          throw Error("合并后的文字记录超过 100 MiB，未写入。原图单独传输，不计入此限制。 / Text metadata exceeds 100 MiB; originals transfer separately.");
+        if(Object.keys(merged.conflicts).length) {
+          const conflicts={...raw.conflicts,...merged.conflicts};
+          const decisions={};
+          if(review?.peer===request.peer)for(const [key,value] of Object.entries(review.decisions||{}))
+            if(model.same(conflicts[key],review.conflicts[key]))decisions[key]=value;
+          const reviewAssets={};
+          for(const match of JSON.stringify(conflicts).matchAll(/schedule-image:([a-f0-9]{64}\.(?:png|jpeg|gif|webp|avif|bmp|heic|heif))/g))if(assets[match[1]])reviewAssets[match[1]]=assets[match[1]];
+          const staged=await window.journalNative.call("stageSyncReview",{peer:request.peer,conflicts,assets:reviewAssets,decisions,createdAt:new Date().toISOString()});
+          result={schema:2,status:"pending-review",reviewId:staged.id,count:Object.keys(conflicts).length};
+        } else {
+        let warning="";
+        if(!model.same(merged.entities,local.entities)) {
+        const draft=await model.desktopImport(merged.entities,assets,records,projects,imageAssets);
+        const saved=await window.journalNative.call("commitSync",{...draft,events:Object.entries(merged.entities).filter(([k])=>k.startsWith("event/")).map(([,v])=>v)});
+        Object.keys(records).forEach(key=>delete records[key]);Object.assign(records,draft.records);
+        projects=draft.projects;state.edits={...records};imageAssets.clear();for(const pair of draft.images)imageAssets.set(...pair);
+        window.journalNative.schedules=saved.schedules;applyScheduleProjection(saved.schedules);
+        bodyHistory.clear();renderCalendar();renderEditor();
+        warning=saved.warning||"";
+        }
+        const actual=await model.desktopExport(records,projects,imageAssets);addEvents(actual.entities);
+        result={schema:2,status:"complete",reviewId:review?.peer===request.peer?review.id:"",entities:actual.entities,conflicts:merged.conflicts,assets:await window.journalNative.call("prepareSyncAssets",{...assets,...actual.assets}),warning};
+        }
+      }
       else if(request.op==="list_projects")result=projects;
       else if(request.op==="get_day") {
         const date=apiDate(request.date), record=records[date] || empty();
@@ -2584,6 +3064,7 @@
       ] + (state.selected === today ? " · 今天" : "");
   }
   function renderEditor() {
+    finishInlineIdea();
     finishProjectComposer();
     resetTypingFormat();
     formatOpen = false; closeIdeaMenu();
@@ -2633,6 +3114,7 @@
   }
   function select(k, keepView = false) {
     rememberView();
+    if (k !== state.selected) newIdeaProjects = [];
     const previousYear = state.year,
       previousMonth = state.month,
       previousView = state.view;
@@ -2821,7 +3303,11 @@
       return;
     }
     if (b.dataset.openIdea) {
-      openIdea(b.dataset.ideaDay, b.dataset.openIdea);
+      clearTimeout(ideaClickTimer);
+      if (e.detail === 0 || !b.closest(".j-overview-idea")) openIdea(b.dataset.ideaDay, b.dataset.openIdea);
+      else if (e.detail === 1) ideaClickTimer = setTimeout(() => {
+        if (b.isConnected) openIdea(b.dataset.ideaDay, b.dataset.openIdea);
+      }, 600);
       return;
     }
     if (b.dataset.bindIdea) {
@@ -2897,6 +3383,7 @@
       return;
     }
     if (action === "idea-page-prev" || action === "idea-page-next") {
+      finishInlineIdea();
       overviewPage = Math.max(
         0,
         overviewPage + (action === "idea-page-next" ? 1 : -1),
@@ -3130,6 +3617,21 @@
     }
     const t = bodyField(),
       c = ideaContext();
+    if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault(); e.stopPropagation();
+      const before = bodySnapshot(), change = window.ScheduleContent.indent(before.body, before.start, before.end, e.shiftKey, true);
+      let body = before.body, formats = before.formats;
+      const ideas = copyIdeas(before.ideas);
+      for (const edit of change.edits.reverse()) {
+        const next = body.slice(0, edit.start) + edit.text + body.slice(edit.end);
+        formats = textFormats.replace(formats, body, next, {...edit, newEnd: edit.start + edit.text.length});
+        for (const idea of ideas) if (idea.offset > edit.start) idea.offset += edit.text.length - (edit.end - edit.start);
+        body = next;
+      }
+      t.value = body; setBodySelection(change.start, change.end);
+      rememberBody(before, "indent"); beforeEdit = null;
+      changeRecord({body, formats, ideas}); return;
+    }
     if (e.key === "Enter" && e.shiftKey) {
       e.preventDefault();
       if (!c.line.trim()) {

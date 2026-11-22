@@ -166,7 +166,7 @@
       .forEach((line, i) => {
         const shown =
           i === 0
-            ? line.slice(1).trimStart()
+            ? line.slice(line.startsWith("• ") ? 2 : 1)
             : line.startsWith("  ")
               ? line.slice(2)
               : line;

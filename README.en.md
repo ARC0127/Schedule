@@ -1,58 +1,61 @@
-<p align="center"><img src="assets/schedule-icon.png" width="88" alt="Schedule icon" /></p>
+<p align="center"><img src="assets/schedule-icon.png" width="68" alt="Schedule icon" /></p>
 <h1 align="center">Schedule</h1>
-<p align="center"><b>A place for today's ideas.</b></p>
-<p align="center">A lightweight Windows calendar journal. Capture ideas, connect projects, and keep your files where they belong.</p>
+<p align="center"><b>A little space for a clearer day.</b></p>
+<p align="center">Windows × Android · Calendars, ideas and projects · Local storage, two-way sync</p>
 <p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
-<p align="center">
-  <a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.7">Download v0.0.7</a> ·
-  <a href="docs/releases/0.0.7.md">Release notes</a> ·
-  <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a>
-</p>
+<p align="center"><a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.10">Download</a> · <a href="docs/releases/0.0.10.md">Release notes</a> · <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a></p>
 
-![Windows build](https://github.com/ARC0127/Schedule/actions/workflows/build.yml/badge.svg)
+![Schedule: organize on your desktop, capture ideas on your phone](docs/images/hero.png)
 
-![Schedule home: calendar, projects, and today's ideas](docs/images/home.png)
+<p align="center"><sub>Both apps shown with synthetic demo data. No account required. Open the desktop app directly.</sub></p>
 
-<p align="center"><sub>Interface preview with synthetic demo data. The desktop app launches directly; no localhost server is required.</sub></p>
+## Choose your device
 
-## v0.0.7 · Write directly in your projects
+| Windows 0.0.10 | Android 1.1.8 | Desktop + phone |
+| :--- | :--- | :--- |
+| [**Download Windows ZIP**](https://github.com/ARC0127/Schedule/releases/download/v0.0.10/Schedule-0.0.10-windows-x64.zip) | [**Download Android APK**](https://github.com/ARC0127/Schedule/releases/download/v0.0.10/Schedule.Android-1.1.8.apk) | [**Download both**](https://github.com/ARC0127/Schedule/releases/download/v0.0.10/Schedule-Windows-0.0.10-Android-1.1.8.zip) |
+| Extract the entire folder and open `Journal.exe` | Install over your existing app to keep its data | Both apps and installation instructions |
 
-Open a project and capture an idea. It saves to today and binds to that project automatically. Widen the right editor when you need more writing space.
+Windows requires Windows 10/11 x64, .NET Framework 4.8 and [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/). Android requires 8.0 or later. The Windows executable is unsigned and may show an unknown-publisher prompt. Python and Node.js are not required to use the apps.
 
-- **Live bindings:** the project picker follows the current idea. Add, remove or change projects without starting a new line.
-- **Projects at a glance:** total idea counts appear beside names, sorted by unfinished idea count.
-- **Start writing:** project and unbound overviews accept text and images with automatic saving. Enter adds a line; Shift+Enter starts the next idea.
-- **Adjust your workspace:** drag the right divider to resize, double-click to reset, and keep your preferred width across restarts.
+> **Upgrading:** Quit Windows Schedule from the tray before replacing its program files. Keep `%USERPROFILE%\.schedule`. Install the same-signed Android APK over the current app; **do not uninstall or clear its data**. Update both devices for batched original-image transfer.
+
+## Capture a thought. Give it room to grow.
+
+| See your days | Follow your ideas | Keep both devices in step |
+| :--- | :--- | :--- |
+| Green calendar cells reflect idea counts. Red marks highlight important items. Double-click a date to expand the day. | Write inside projects, edit in place, indent with Tab, format text and render math offline. Paste originals and click to preview them. | Merge notes, ideas, projects, originals and events in both directions. Review conflicting edits on your desktop. |
+
+On Windows, connect local folders, drop files, resize your sidebar and editor, and preview today from a floating desktop icon or the tray. Codex and Claude Code share the same local read/write interface.
+
+## New: larger photo collections, resumable by file
+
+- **Separate original files:** each image transfers in verified 192 KiB chunks, outside the 100 MiB metadata quota.
+- **Keep completed transfers:** retries skip verified files already received. An incomplete image restarts from its beginning.
+- **Bluetooth discovery, Wi-Fi acceleration:** try the LAN first, then a temporary phone hotspot. Unavailable connections visibly fall back to Bluetooth.
+- **Review conflicting changes:** independent additions merge automatically. Conflicts pause record changes for desktop confirmation.
+
+Verified with a Windows client and Android emulator transferring approximately 138 MiB of originals in each direction, then repeating without retransmitting images. This is not a wireless speed benchmark. Physical Redmi K70 / HyperOS hotspot and network switching remain unverified. See the [release notes](docs/releases/0.0.10.md) for compatibility and limits.
 
 <details>
-<summary>See the updated Todo overview</summary>
+<summary><b>See the desktop calendar, tasks and expanded Android month</b></summary>
 
-![Schedule Todo overview: tasks and events organized by date](docs/images/tasks.png)
+![Windows calendar and daily editor](docs/images/home.png)
+![Windows task overview](docs/images/tasks.png)
+<p align="center"><img src="docs/images/android-calendar.png" width="320" alt="Expanded Android calendar with event and idea summaries" /></p>
 
 </details>
 
-## See your days. Keep your ideas together.
+## Your first sync
 
-| | What Schedule offers |
-| --- | --- |
-| **A calendar of progress** | Monthly and yearly views shade days in green by the number of meaningful ideas, normalized within the visible date range. Important items have reddish markers. |
-| **Simple writing** | Enter adds a line; Shift+Enter adds an idea. Paste text or images and mark ideas complete. |
-| **Projects across dates** | Link an idea to multiple projects. Open a project in the sidebar to see its ideas across dates, or use the dedicated unbound view. Overviews display images and open web links and shared day-level attachments. |
-| **Local files, connected** | Drop files or folders, or paste paths. Files stay in their original locations and open directly from the desktop app. |
-| **Windows reminders** | Multiple events per day, each with its own time, reminder, importance and completion state. |
-| **Recoverable data** | Daily snapshots, manual backups, restore previews, complete portable backups and Markdown with images. |
-| **Assistant integration** | Codex and Claude Code share a local CLI and skill with revision-checked writes. |
-| **Within reach** | A transparent floating desktop icon, hover preview for today, click to restore, system tray, and optional startup at sign-in. |
+1. Pair the phone and PC in system Bluetooth settings.
+2. On Android, open Schedule → Sync, select the PC, grant required permissions and tap “Wait for Windows.”
+3. On Windows, open Bluetooth sync at the top right, select the phone and start two-way sync. Keep the phone's sync page open.
 
-## Download and start
+The temporary hotspot does not share internet access. The PC may temporarily switch Wi-Fi and attempts to restore its previous connection afterward. You initiate each sync; no cloud account is involved.
 
-1. Download **`Schedule-0.0.7-windows-x64.zip`** from the [v0.0.7 release](https://github.com/ARC0127/Schedule/releases/tag/v0.0.7).
-2. Extract the entire archive into a fixed, writable folder.
-3. Double-click **`Journal.exe`**. Its display name is **Schedule**. No installer is needed; the executable name is retained for existing shortcut and notification compatibility.
-
-Requires **Windows 10/11 x64**, **.NET Framework 4.8**, and the [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/). Python, Node.js, and development tools are not needed to run the package.
-
-> Choose the Windows ZIP to run the app. GitHub's automatic “Source code” downloads contain source files. The executable is currently unsigned, so Windows may display a publisher verification prompt.
+<details>
+<summary><b>Everyday controls and shortcuts</b></summary>
 
 ## Everyday controls
 
@@ -62,7 +65,12 @@ Requires **Windows 10/11 x64**, **.NET Framework 4.8**, and the [Microsoft Edge 
 | Expand a day | Double-click a date to use both the calendar and editor area; use the back arrow or Esc to return. Single-click still selects the day |
 | View important days | Open Important in the sidebar to list starred dates across all months. Click a row to expand that day; the back arrow or Esc returns to the list |
 | Add an idea | **Shift+Enter**; **Enter** only adds a line |
-| Choose projects | With the caret inside an idea, the top project picker immediately adds or removes its project bindings. Outside an idea, it sets the defaults for future ideas |
+| Structure your notes | **Tab** indents the current line; **Shift+Tab** outdents it. Select multiple lines to adjust them together. Undo and redo are supported |
+| Edit in place | Double-click idea text in a project or the unbound overview to edit it where it is, with automatic saving. Click “完成编辑” (Finish editing) or press Esc to finish. The original date and project bindings stay intact |
+| View original images | Click an image in a record or project to preview it inside the app. The image fits the window initially; use the wheel to zoom and drag to pan. Click outside the image or press Esc to close. Received image bytes are preserved without resizing or recompression; the per-image limit is 12 MB |
+| Two-way Bluetooth sync | Pair the phone and PC in system settings. In Schedule on Android, select this PC and tap “Wait for Windows.” In the desktop app, click “蓝牙同步” (Bluetooth sync) at the top right, select the paired phone, then “双向同步” (Two-way sync). Use the existing Schedule shortcut; no separate executable is needed |
+| Choose projects | New ideas start unbound. Inside an idea, the picker immediately adds or removes bindings. Outside an idea, a manual selection applies only to the next idea and clears when changing dates, views or restarting. Writing in a project overview still binds to that project |
+| Edit a project | Right-click its sidebar name to change the name or linked local folder. F2 or Shift+F10 works when the project is focused. Existing idea bindings are preserved |
 | Project counts and order | Parentheses show each project's total ideas. Projects sort by unfinished idea count, keeping their original order on ties. Ordinary notes count as unfinished ideas without becoming todos |
 | Write inside a project | Click the project overview's writing area. Ideas save automatically to today and bind to that project. Enter adds a line, Shift+Enter starts the next idea, and pasted images work inline. The unbound view supports the same flow |
 | Mark complete | Place the caret inside an idea and **tap Ctrl alone** to complete it; tap again to return it to Todo. Ordinary notes can also be completed directly; Ctrl+C/V do not trigger completion |
@@ -87,15 +95,22 @@ Pasting multiline text or equations keeps them in the current idea, including bl
 
 New ideas start as ordinary notes. Mark one as a task to add importance or a linked schedule. Events can link to ideas from any date and follow that idea's completion; Todo shows one item for the idea and its linked events. Completing it from the calendar, project or event synchronizes the other views and cancels linked reminders. Converting it back to a note clears its deadline and detaches events, retaining them as standalone events. Existing checked ideas migrate to completed tasks; existing task flags and deadlines remain todos.
 
-Text styles persist with each record and appear in project overviews and expanded day views. Copying within the app preserves styles, while plain-text copying retains the source text. These features are included in the v0.0.7 Windows download.
+Text styles persist with each record and appear in project overviews and expanded day views. Copying within the app preserves styles, while plain-text copying retains the source text. These features are included in the v0.0.10 Windows download.
 
 The desktop app opens today's date on startup. Midnight, tray restoration, and wake-up refresh the current day. An idle view of today follows the new day; active editing and historical-date browsing stay on their selected date. The Today button always reads the current system date.
 
 Moving the window between monitors with different scaling settings redraws text and controls at the current monitor's DPI. The floating icon and today preview follow the monitor's scale as well.
 
+
+</details>
+
 ## Your data stays on your computer
 
-Data is stored in `%USERPROFILE%\.schedule\journal.json`, including journal text, ideas, project bindings, images, events, and floating-window position. Linked files remain at their original paths. Saves use a temporary file and atomic replacement; `.bak` holds the preceding version.
+Updated apps merge notes, ideas, projects, original images and all events in both directions, including previously phone-only events. Stable IDs and a shared baseline distinguish updates, deletions and concurrent edits. Disconnects can be retried without duplicate records. Conflicts pause record changes for explicit desktop review before another sync. Linked and legacy events remain protected. Original image bytes travel in checked chunks without resizing or recompression. With both apps updated, originals transfer separately in 192 KiB chunks without a fixed aggregate quota. Metadata is limited to 100 MiB and each synced original to 64 MiB, subject to available disk space. Legacy peers retain the old whole-payload limits.
+
+System pairing alone does not start a transfer: the phone must be waiting and the PC starts synchronization. Older phones retain the shared-event protocol and show its limited scope. Local folder paths and Android document grants stay on their device. The updated Android app supports complete ZIP backup/restore including original images, with metadata recovery copies before synchronization and immutable original files retained separately. Do not uninstall or clear phone data. Android manual ZIP backups retain their existing 256 MiB total limit; sync recovery uses a separate metadata path.
+
+Data is stored in `%USERPROFILE%\.schedule\journal.json`, including journal text, ideas, project bindings, image references, events, and floating-window position. New and received originals live in the adjacent `images` directory; older embedded originals remain compatible. Linked files remain at their original paths. Saves use a temporary file and atomic replacement; `.bak` holds the preceding version.
 
 On first upgrade, legacy AppData and MSIX package-cache journals are backed up under `legacy-backups` before importing the populated copy. Different populated histories produce a visible conflict instead of an overwrite. Original files remain untouched; an existing new journal is never reimported. The new location avoids AppData redirection splitting desktop and Codex launches.
 
@@ -103,7 +118,7 @@ On first upgrade, legacy AppData and MSIX package-cache journals are backed up u
 
 The Data and backups dialog also provides automatic daily snapshots (up to 30), retained manual snapshots and previews before restoring. Restore replaces all journal data, projects, images and events after preserving the current version. Windows reminders are reconciled after restore and still depend on notification permissions.
 
-A complete ZIP contains the full JSON store and embedded images for import on another computer. Linked external files are referenced by path, not copied. Markdown ZIPs contain dated documents, events, completion, projects, deadlines and image files for reading. Use the complete backup to retain text formatting and internal IDs exactly. Importing a `.md` file appends it to the selected day, recognizes bullets/task checkboxes and loads local images referenced within its directory.
+A complete ZIP contains the full JSON store, embedded images and referenced original files for import on another computer. Linked external files are referenced by path, not copied. Markdown ZIPs contain dated documents, events, completion, projects, deadlines and image files for reading. Use the complete backup to retain text formatting and internal IDs exactly. Importing a `.md` file appends it to the selected day, recognizes bullets/task checkboxes and loads local images referenced within its directory.
 
 ## Codex and Claude Code
 
@@ -121,6 +136,9 @@ Existing skills with the same name are preserved unless you explicitly use `-For
 
 ## Build from source
 
+Android source and build instructions are in [mobile/](mobile/README.md). Production signing keys are not included. A self-signed APK cannot update the official signed app.
+
+
 On Windows, install Python 3.10+ and run:
 
 ```powershell
@@ -134,7 +152,7 @@ The first build downloads pinned NuGet dependencies and uses the .NET Framework 
 py -3 scripts/package_release.py
 ```
 
-The output is `dist/Schedule-0.0.7-windows-x64.zip`. It includes the app, both READMEs, the home screenshot, licenses, and the notes for this release.
+The output is `dist/Schedule-0.0.10-windows-x64.zip`. It includes the app, both READMEs, the home screenshot, licenses, and the notes for this release.
 
 Development tests also require Node.js and npm:
 
@@ -160,16 +178,16 @@ npm run test:math-svg
 py -3 scripts/test_native_models.py
 ```
 
-Native tests require a desktop session and WebView2, and set an isolated data directory before process startup. CI runs state migration tests and a Windows build. The release workflow builds from the `v0.0.7` tag and publishes using the [versioned release notes](docs/releases/0.0.7.md).
+Native tests require a desktop session and WebView2, and set an isolated data directory before process startup. CI runs model tests and a Windows build. A version tag prepares a draft release using the [versioned notes](docs/releases/0.0.10.md). The same-signed Android APK and combined bundle are attached before publication.
 
 Each document load reads the current file before enabling editing. Failed reads block editing, stale saves reject external file changes, and unchanged saves preserve the previous backup.
 
 ## Current scope
 
-The interface is currently Chinese and storage remains single-user JSON. Assistants communicate with the desktop process through the local CLI; remote network writes and direct edits to the live journal file are unsupported. Markdown is a readable export, while complete backups preserve the full data model. Windows notification settings, Do Not Disturb, shutdown and sleep can affect reminder delivery.
+Windows currently has a Chinese interface; Android supports Chinese and English. Storage remains single-user JSON. Assistants communicate with the desktop process through the local CLI; remote network writes and direct edits to the live journal file are unsupported. Markdown is a readable export, while complete backups preserve the full data model. Windows notification settings, Do Not Disturb, shutdown and sleep can affect reminder delivery.
 
 ## Creator and license
 
 Made by [**ARCLIGHT**](https://arc0127.github.io/) and released under the [MIT License](LICENSE). Report problems through [Issues](https://github.com/ARC0127/Schedule/issues).
 
-[Architecture and data model (Chinese)](docs/architecture.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [v0.0.7 release notes](docs/releases/0.0.7.md)
+[Architecture and data model (Chinese)](docs/architecture.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [v0.0.10 release notes](docs/releases/0.0.10.md)

@@ -9,7 +9,7 @@
         active = {
           offset,
           end: offset + line.length,
-          text: line.slice(1).trimStart(),
+          text: line.slice(line.startsWith("• ") ? 2 : 1),
         };
         ideas.push(active);
       } else if (active) {
@@ -110,7 +110,30 @@
       return result;
     });
   };
-  const api = { parts, mathParts, ideaRanges };
+  // Indent whole lines, keeping the structural idea marker and legacy line
+  // padding intact. Tabs are content, never new idea boundaries.
+  function indent(text, start, end, outdent = false, daily = false) {
+    const edits = [], ranges = daily ? ideaRanges(text) : [];
+    const first = start === 0 ? 0 : text.lastIndexOf("\n", start - 1) + 1;
+    const last = end > start && text[end - 1] === "\n" ? end - 1 : end;
+    for (let at = first; at <= last;) {
+      const stop = text.indexOf("\n", at), line = text.slice(at, stop < 0 ? text.length : stop);
+      const inIdea = ranges.some(r => at >= r.offset && at <= r.end);
+      const bareMarker = daily && line === "•";
+      const prefix = bareMarker ? 1 : daily && (/^• /.test(line) || inIdea && line.startsWith("  ")) ? 2 : 0;
+      const content = line.slice(prefix), position = at + prefix;
+      if (!outdent) edits.push({start: position, end: position, text: bareMarker ? " \t" : "\t"});
+      else {
+        const width = content.startsWith("\t") ? 1 : /^ {1,2}/.exec(content)?.[0].length || 0;
+        if (width) edits.push({start: position, end: position + width, text: ""});
+      }
+      if (stop < 0) break;
+      at = stop + 1;
+    }
+    const map = position => position + edits.reduce((delta, e) => delta + (position >= e.end ? e.text.length - (e.end - e.start) : position > e.start ? e.start - position : 0), 0);
+    return {edits, start: map(start), end: map(end)};
+  }
+  const api = { parts, mathParts, ideaRanges, indent };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ScheduleContent = api;
 })(globalThis);

@@ -21,6 +21,7 @@ internal class JournalWindow : Form
     readonly System.Windows.Forms.Timer activationTimer = new System.Windows.Forms.Timer { Interval=500 };
     bool ready, closing, minimizing;
     bool backgroundLaunch, initializationStarted, transitionPending;
+    bool bluetoothRunning;
     string initialMode;
     LocalApi api;
     readonly Dictionary<string,TaskCompletionSource<string>> apiReplies=new Dictionary<string,TaskCompletionSource<string>>();
@@ -45,6 +46,7 @@ internal class JournalWindow : Form
         trayMenu.Items.Add("退出",null,delegate{RequestExit();});
         trayMenu.Opening+=delegate{RefreshTrayMenu();};
         tray.MouseClick+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left)OpenActivation();};
+        tray.BalloonTipClicked+=async delegate {OpenActivation();await web.CoreWebView2.ExecuteScriptAsync("document.querySelector('#j-bluetooth-open').click()");};
         Controls.Add(web);
         FormClosed+=delegate{if(api!=null)api.Dispose();tray.Visible=false;tray.Dispose();trayMenu.Dispose();activationTimer.Dispose();if(dock!=null)dock.Dispose();};
         Resize+=delegate {
@@ -96,6 +98,8 @@ internal class JournalWindow : Form
             web.CoreWebView2.Settings.AreDefaultContextMenusEnabled=false;
             web.CoreWebView2.Settings.IsStatusBarEnabled=false;
             web.CoreWebView2.SetVirtualHostNameToFolderMapping("journal.local",Program.AppDir,CoreWebView2HostResourceAccessKind.DenyCors);
+            Directory.CreateDirectory(Path.Combine(Program.DataDir,"images"));
+            web.CoreWebView2.SetVirtualHostNameToFolderMapping("schedule-images.local",Path.Combine(Program.DataDir,"images"),CoreWebView2HostResourceAccessKind.DenyCors);
             web.CoreWebView2.NavigationStarting += delegate(object sender,CoreWebView2NavigationStartingEventArgs e) { if(e.Uri!="https://journal.local/index.html")e.Cancel=true;else ready=false; };
             web.CoreWebView2.NewWindowRequested += delegate(object sender,CoreWebView2NewWindowRequestedEventArgs e) {e.Handled=true;};
             web.CoreWebView2.PermissionRequested += delegate(object sender,CoreWebView2PermissionRequestedEventArgs e) {e.State=CoreWebView2PermissionState.Deny;};
@@ -136,6 +140,24 @@ internal class JournalWindow : Form
                 if(changed.Count>0)Program.Save();
                 if(dock!=null)dock.RefreshToday();result=new {saved=true,schedules=Program.Data.Schedules};
             } else if(op=="saveSchedule") result=WindowsReminders.SetSchedule((Dictionary<string,object>)req["payload"]);
+            else if(op=="bluetoothDevices") result=await Task.Run(() => BluetoothTransport.PairedDevices().OrderBy(device=>device.Name).Select(device=>new {address=device.Address.ToString("X12"),name=device.Name}).ToArray());
+            else if(op=="bluetoothSync") result=await SyncBluetooth((Dictionary<string,object>)req["payload"]);
+            else if(op=="storeOriginal") result=new ScheduleSync.SyncAssets(Path.Combine(Program.DataDir,"images")).StoreDataUrl(Convert.ToString(((Dictionary<string,object>)req["payload"])["src"]));
+            else if(op=="prepareSyncAssets") result=new ScheduleSync.SyncAssets(Path.Combine(Program.DataDir,"images")).Prepare((Dictionary<string,object>)req["payload"]);
+            else if(op=="legacyAssetBytes") {
+                var originals=new ScheduleSync.SyncAssets(Path.Combine(Program.DataDir,"images"));
+                result=((Dictionary<string,object>)req["payload"]).Keys.Sum(key=>4*((new FileInfo(originals.PathFor(key)).Length+2)/3));
+            }
+            else if(op=="commitSync") result=JournalSyncCommit.Apply((Dictionary<string,object>)req["payload"]);
+            else if(op=="loadSyncReview") result=JournalSyncReview.Load();
+            else if(op=="stageSyncReview") {
+                result=JournalSyncReview.Stage((Dictionary<string,object>)req["payload"]);
+                if(Environment.GetEnvironmentVariable("SCHEDULE_TEST_DATA")==null) {
+                    tray.Visible=true;tray.ShowBalloonTip(8000,"Schedule · 同步待确认","手机与电脑的记录有冲突，已暂停同步。请打开蓝牙同步逐项确认。",ToolTipIcon.Warning);
+                }
+            }
+            else if(op=="approveSyncReview") result=JournalSyncReview.Approve((Dictionary<string,object>)req["payload"]);
+            else if(op=="bluetoothSettings") {System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:bluetooth") {UseShellExecute=true});result=new {opened=true};}
             else if(op=="listHistory")result=JournalArchive.List();
             else if(op=="snapshot")result=JournalArchive.Snapshot("manual");
             else if(op=="previewHistory")result=JournalArchive.Preview(Convert.ToString(((Dictionary<string,object>)req["payload"])["id"]));
@@ -184,6 +206,46 @@ internal class JournalWindow : Form
             if(await Task.WhenAny(completion.Task,Task.Delay(55000))!=completion.Task)throw new TimeoutException("API response timed out; inspect state before retrying a write.");
             return await completion.Task;
         } finally {apiReplies.Remove(id);}
+    }
+    // Called only on the Bluetooth worker. The UI thread remains free to answer
+    // WebView API requests and process saveSchedule/saveState bridge messages.
+    Dictionary<string,object> BluetoothApi(Dictionary<string,object> request)
+    {
+        string json=ScheduleSync.Wire.Json.Serialize(request);
+        var reply=new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        BeginInvoke(new Action(async delegate {
+            try {reply.TrySetResult(await ExecuteApi(json));}
+            catch(Exception error) {reply.TrySetException(error);}
+        }));
+        return ScheduleSync.Wire.Object(ScheduleSync.Wire.Json.DeserializeObject(reply.Task.GetAwaiter().GetResult()));
+    }
+    async Task<object> SyncBluetooth(Dictionary<string,object> payload)
+    {
+        if(bluetoothRunning)throw new InvalidOperationException("正在同步，请等待本次同步结束。");
+        object value;ulong address;
+        if(payload==null||!payload.TryGetValue("address",out value)||!(value is string)||
+           !System.Text.RegularExpressions.Regex.IsMatch((string)value,@"\A[0-9a-fA-F]{12}\z")||
+           !UInt64.TryParse((string)value,System.Globalization.NumberStyles.HexNumber,System.Globalization.CultureInfo.InvariantCulture,out address))
+            throw new ArgumentException("请选择已配对的手机。");
+        bluetoothRunning=true;
+        try {
+            // Flush current edits through the same guarded path before the first
+            // disk snapshot. This does not alter protocol source identity.
+            string response=await ExecuteApi(Program.Json.Serialize(new {op="get_day",date=DateTime.Now.ToString("yyyy-MM-dd")}));
+            var readyResponse=Program.Json.Deserialize<Dictionary<string,object>>(response);
+            if(!Convert.ToBoolean(readyResponse["ok"]))throw new InvalidOperationException(Convert.ToString(readyResponse["error"]));
+            var journal=new ScheduleSync.DesktopJournal(Program.StateFile,request=>{request["peer"]=address.ToString("X12");return BluetoothApi(request);});
+            bool wifi=!payload.ContainsKey("wifi")||Convert.ToBoolean(payload["wifi"]);
+            Action<string> report=progressText=>BeginInvoke(new Action(async delegate {
+                await web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('journal:sync-progress',{detail:"+Program.Json.Serialize(progressText)+"}))");
+            }));
+            string message=await Task.Run(() => {
+                using(var stream=BluetoothTransport.Open(address))
+                    return ScheduleSync.SyncSession.Run(stream,journal,wifi?(Func<Dictionary<string,object>,ScheduleSync.WifiTransferConnection>)(offer=>ScheduleSync.WifiTransferConnection.Open(offer)):null,report);
+            });
+            if(!String.IsNullOrEmpty(journal.CompletedReviewId))JournalSyncReview.Complete(journal.CompletedReviewId);
+            return new {message=message};
+        } finally {bluetoothRunning=false;}
     }
     internal async void ToggleDockIdea(string date,string id)
     {

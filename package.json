@@ -1,6 +1,6 @@
 {
   "name": "schedule-desktop",
-  "version": "0.0.7",
+  "version": "0.0.10",
   "private": true,
   "license": "MIT",
   "author": "ARCLIGHT <https://arc0127.github.io/>",
@@ -22,6 +22,10 @@
     "test:tasks": "node tests/task-workflow.cjs",
     "test:project-bindings": "node tests/project-bindings.cjs",
     "test:project-compose": "node tests/project-compose.cjs",
+    "test:inline-edit": "node tests/inline-edit.cjs",
+    "test:image-preview": "node tests/image-preview.cjs",
+    "test:bluetooth": "node tests/bluetooth.cjs",
+    "test:bluetooth-protocol": "python scripts/test_bluetooth.py",
     "test:editor-width": "node tests/editor-width.cjs"
   },
   "devDependencies": {

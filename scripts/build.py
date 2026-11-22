@@ -69,16 +69,16 @@ def build(out, cache):
     for p in (ROOT / 'assets').iterdir():
         if p.suffix in {'.png', '.ico'}:
             shutil.copy2(p, out / p.name)
-    for n in ['app.css', 'app.js', 'state.js', 'content.js', 'formatting.js', 'features.js', 'bridge.js']:
+    for n in ['app.css', 'app.js', 'state.js', 'content.js', 'formatting.js', 'features.js', 'bridge.js', 'sync.js']:
         shutil.copy2(ROOT / 'src/web' / n, out / n)
     shutil.copy2(ROOT / 'third_party/lucide.js', out / 'lucide.js')
     shutil.copytree(ROOT / 'third_party/katex', out / 'katex', dirs_exist_ok=True)
     document = '''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://schedule-images.local; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Schedule</title><link rel="stylesheet" href="katex/katex.min.css"><link rel="stylesheet" href="app.css"><script src="katex/katex.min.js"></script><script src="lucide.js"></script><script src="state.js"></script><script src="content.js"></script><script src="formatting.js"></script></head><body>'''
     document += (ROOT / 'src/web/app.html').read_text(encoding='utf8')
-    document += '<script src="features.js"></script><script src="app.js"></script></body></html>'
+    document += '<script src="features.js"></script><script src="sync.js"></script><script src="app.js"></script></body></html>'
     (out / 'index.html').write_text(document, encoding='utf8')
     csc, refs = references(out, packages)
     if not csc.exists():
@@ -97,7 +97,9 @@ def build(out, cache):
         shutil.copy2(ROOT / n, out / n)
     version = json.loads((ROOT / 'package.json').read_text(encoding='utf8'))['version']
     for n in ['README.md', 'README.en.md', 'assets/schedule-icon.png',
-              'docs/architecture.md', 'docs/images/home.png', 'docs/images/tasks.png', f'docs/releases/{version}.md']:
+              'docs/architecture.md', 'docs/images/home.png', 'docs/images/tasks.png',
+              'docs/images/hero.png', 'docs/images/android-home.png', 'docs/images/android-calendar.png',
+              'mobile/README.md', f'docs/releases/{version}.md']:
         destination = out / n
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / n, destination)

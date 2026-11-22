@@ -67,13 +67,15 @@
         /^data:image\/(png|jpeg|gif|webp|bmp|avif);base64,(.+)$/s.exec(
           asset.src || "",
         );
-      if (!match) continue;
-      const name = `image-${token.charCodeAt(0).toString(16)}.${match[1] === "jpeg" ? "jpg" : match[1]}`;
+      const external=/^https:\/\/schedule-images\.local\/([a-f0-9]{64}\.(png|jpeg|gif|webp|avif|bmp|heic|heif))$/.exec(asset.src||'');
+      if (!match && !external) continue;
+      const extension=match?.[1]||external[2];
+      const name = `image-${token.charCodeAt(0).toString(16)}.${extension === "jpeg" ? "jpg" : extension}`;
       tokens.set(
         token,
         `![${(asset.name || "图片").replace(/[\[\]\r\n]/g, "")}](images/${name})`,
       );
-      images.push({ name, base64: match[2] });
+      images.push(external?{name,ref:external[1]}:{ name, base64: match[2] });
     }
     const documents = Object.entries(records)
       .sort(([a], [b]) => a.localeCompare(b))

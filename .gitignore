@@ -9,3 +9,9 @@ __pycache__/
 journal.json*
 WebView2/
 .env*
+mobile/build/
+*.p12
+*.jks
+*.keystore
+*.dpapi
+*.apk
