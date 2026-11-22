@@ -1,6 +1,6 @@
 {
   "name": "schedule-desktop",
-  "version": "0.0.10",
+  "version": "0.0.13",
   "private": true,
   "license": "MIT",
   "author": "ARCLIGHT <https://arc0127.github.io/>",
@@ -26,7 +26,8 @@
     "test:image-preview": "node tests/image-preview.cjs",
     "test:bluetooth": "node tests/bluetooth.cjs",
     "test:bluetooth-protocol": "python scripts/test_bluetooth.py",
-    "test:editor-width": "node tests/editor-width.cjs"
+    "test:editor-width": "node tests/editor-width.cjs",
+    "test:auto-sync": "python scripts/test_auto_sync.py && node tests/auto-sync.cjs"
   },
   "devDependencies": {
     "playwright": "1.58.2",

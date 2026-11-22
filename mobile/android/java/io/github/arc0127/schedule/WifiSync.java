@@ -24,6 +24,7 @@ final class WifiSync implements AutoCloseable {
     private final String fingerprint,token;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private Future<?> transfer;
+    private volatile String rejectedAuthentication;
     WifiSync()throws Exception {
         KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);String alias="ScheduleWifiTLS";
         if(!store.containsAlias(alias)) {
@@ -81,7 +82,7 @@ final class WifiSync implements AutoCloseable {
                         try {
                             socket.startHandshake();JSONObject auth=Protocol.read(socket.getInputStream(),"wifi-auth");
                             if(!MessageDigest.isEqual(token.getBytes(java.nio.charset.StandardCharsets.UTF_8),auth.getString("token").getBytes(java.nio.charset.StandardCharsets.UTF_8)))continue;
-                        }catch(IOException|JSONException rejected){android.util.Log.w("ScheduleWifi","Connection authentication rejected",rejected);continue;}
+                        }catch(IOException|JSONException rejected){rejectedAuthentication=BluetoothSync.errorDetails(rejected);android.util.Log.w("ScheduleWifi","Connection authentication rejected",rejected);continue;}
                         socket.setSoTimeout(120000);Protocol.write(socket.getOutputStream(),Protocol.frame("wifi-ready"));
                         ScheduledExecutorService timer=Executors.newSingleThreadScheduledExecutor();
                         try(TransferWatchdog progress=new TransferWatchdog(SystemClock::elapsedRealtime,120000)) {
@@ -96,5 +97,6 @@ final class WifiSync implements AutoCloseable {
         });
     }
     void await()throws Exception {transfer.get();}
+    String authenticationError(){return rejectedAuthentication;}
     public synchronized void close(){closed=true;if(hotspot!=null){hotspot.close();hotspot=null;}try{server.close();}catch(IOException ignored){}try{if(active!=null)active.close();}catch(IOException ignored){}worker.shutdownNow();}
 }

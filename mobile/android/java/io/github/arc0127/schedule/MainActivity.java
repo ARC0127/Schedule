@@ -33,12 +33,10 @@ public final class MainActivity extends Activity {
     private WebView web;
     private AtomicFile journal;
     private EventStore events;
-    private BluetoothSync sync;
     private boolean zh;
-    private volatile String syncStatus = "idle";
     private String exportText = "";
     private String imageToSave = "";
-    private volatile boolean journalBusy;
+    private String loadedJournal;
     private final Map<String,CompletableFuture<JSONObject>> syncReplies=new ConcurrentHashMap<>();
 
     @Override public void onCreate(Bundle state) {
@@ -127,12 +125,14 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        SyncService.activity=this;
+        SyncService.resume(this);
         reschedule();
+        emit("journal",new JSONObject());
         emit("permissions", new JSONObject());
     }
 
     @Override protected void onStop() {
-        stopSync();
         super.onStop();
     }
 
@@ -142,6 +142,7 @@ public final class MainActivity extends Activity {
             web.destroy();
             web = null;
         }
+        if(SyncService.activity==this)SyncService.activity=null;
         super.onDestroy();
     }
 
@@ -241,7 +242,9 @@ public final class MainActivity extends Activity {
                 .put("wifiPermission",allowed(Build.VERSION.SDK_INT>=33?Manifest.permission.NEARBY_WIFI_DEVICES:Manifest.permission.ACCESS_FINE_LOCATION))
                 .put("exact", Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms())
                 .put("notify", ReminderReceiver.notificationsAllowed(this)).put("paired", paired)
-                .put("status", syncStatus).put("language", zh ? "zh" : "en");
+                .put("companionSupported",CompanionConnection.supported(this))
+                .put("companionAssociated",CompanionConnection.associated(this,SyncService.preferences(this).getString("peer","")))
+                .put("status", SyncService.status).put("autoSync",SyncService.settings(this)).put("syncBusy",JournalAccess.busy).put("language", zh ? "zh" : "en");
     }
 
     private void startSync(String address) throws Exception {
@@ -256,68 +259,14 @@ public final class MainActivity extends Activity {
                 || adapter.getRemoteDevice(address).getBondState() != BluetoothDevice.BOND_BONDED) {
             throw new IOException(zh ? "请先在系统中配对电脑。" : "Pair the computer in system settings first.");
         }
-        stopSync();
-        final BluetoothSync[] session = new BluetoothSync[1];
-        session[0] = new BluetoothSync(this,adapter, events, address, () -> {
-            emit("events", new JSONObject());
-            reschedule();
-        }, status -> ui.post(() -> {
-            if (sync != session[0]) return;
-            setSyncStatus(status);
-        }), fullJournalAccess());
-        sync = session[0];
-        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        setSyncStatus("starting");
-        sync.start();
+        SyncService.configure(this,address,true,SyncService.hours(this));
+        SyncService.resume(this);
+        emit("permissions",new JSONObject());
     }
 
     JournalTransfer.Access fullJournalAccess() {
-        return new JournalTransfer.Access() {
-            public SyncAssets assets()throws Exception{return new SyncAssets(images());}
-            public JSONObject prepare(String source)throws Exception{return prepare(source,false);}
-            public JSONObject prepare(String source,boolean batched) throws Exception {
-                synchronized(DataBackup.LOCK) {
-                    if(journalBusy)throw new IOException("Finish the current data operation first");
-                    events.begin(source);journalBusy=true;
-                }
-                return journalQuery("export",new JSONObject().put("source",source).put("batched",batched));
-            }
-            public void apply(String source,JSONObject sent,JSONObject response) throws Exception {
-                JSONObject originalAssets=response.getJSONObject("assets");
-                for(Iterator<String> it=originalAssets.keys();it.hasNext();){String id=it.next();JSONObject asset=originalAssets.getJSONObject(id);if(asset.optBoolean("ref")&&!assets().has(id))throw new IOException("Missing original: "+id);}
-                JSONObject prepared=journalQuery("apply",new JSONObject().put("sent",sent).put("response",response));
-                synchronized(DataBackup.LOCK) {
-                    Map<String,byte[]> files=DataBackup.captureMetadata(MainActivity.this);
-                    files.put("journal.json",prepared.getJSONObject("journal").toString().getBytes(StandardCharsets.UTF_8));
-                    JSONObject remote=Protocol.snapshot(prepared.getJSONArray("events"));
-                    JSONObject eventState=new JSONObject().put("local",new JSONObject()).put("remote",remote).put("outbox",new JSONObject()).put("source",source).put("lastSync",System.currentTimeMillis());
-                    files.put("events.json",eventState.toString().getBytes(StandardCharsets.UTF_8));
-                    JSONObject alarms=DataBackup.json(files.get("alarms.json"));
-                    List<String> oldKeys=new ArrayList<>();for(Iterator<String> it=alarms.keys();it.hasNext();)oldKeys.add(it.next());
-                    for(String key:oldKeys)if(key.startsWith("local:")&&remote.has(key.substring(6))) {
-                        String shared="remote:"+key.substring(6);if(!alarms.has(shared))alarms.put(shared,alarms.get(key));alarms.remove(key);
-                    }
-                    files.put("alarms.json",alarms.toString().getBytes(StandardCharsets.UTF_8));
-                    JSONObject assets=response.getJSONObject("assets");
-                    for(Iterator<String> it=assets.keys();it.hasNext();) {
-                        String id=it.next();if(!DataBackup.imageName(id))throw new IOException("Invalid image identity");
-                        if(assets.getJSONObject(id).optBoolean("ref"))continue;
-                        byte[] bytes=android.util.Base64.decode(assets.getJSONObject(id).getString("data"),android.util.Base64.NO_WRAP);
-                        if(!id.startsWith(DataBackup.hash(bytes)+"."))throw new IOException("Original image checksum mismatch");
-                        files.put("images/"+id,bytes);
-                    }
-                    DataBackup.commitMetadata(MainActivity.this,files);events.reload();
-                }
-            }
-            public void end() {synchronized(DataBackup.LOCK){journalBusy=false;events.end();}emit("journal",new JSONObject());}
-        };
-    }
-
-    private long lastImageStatus;
-    private void setSyncStatus(String status) {
-        if(status.startsWith("images-")){long now=android.os.SystemClock.elapsedRealtime();if(now-lastImageStatus<200)return;lastImageStatus=now;}
-        syncStatus = status;
-        emit("status", status);
+        try {return new JournalAccess(this,this::journalQuery,()->{},()->emit("journal",new JSONObject()));}
+        catch(Exception error){throw new IllegalStateException(error);}
     }
 
     private JSONObject journalQuery(String operation,JSONObject payload) throws Exception {
@@ -326,16 +275,12 @@ public final class MainActivity extends Activity {
         try {return response.get(90,TimeUnit.SECONDS);}finally{syncReplies.remove(id);}
     }
 
-    private void requireIdle() throws IOException {if(journalBusy)throw new IOException(zh?"正在同步或恢复，请稍候。":"Sync or restore in progress. Please wait.");}
+    private void requireIdle() throws IOException {if(JournalAccess.busy)throw new IOException(zh?"正在同步或恢复，请稍候。":"Sync or restore in progress. Please wait.");}
 
-    private void stopSync() {
-        if (sync == null) return;
-        sync.close();
-        sync = null;
-        getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        setSyncStatus("idle");
-        setSyncStatus("idle");
-    }
+    private void stopSync() {SyncService.disable(this);}
+
+    void syncEvent(String name,Object value) {emit(name,value);}
+    void syncGuard() throws Exception {journalQuery("guard",new JSONObject());}
 
     private File images() throws IOException {
         File directory = new File(getFilesDir(), "images");
@@ -462,6 +407,11 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int request, int status, Intent data) {
         super.onActivityResult(request, status, data);
+        if(request==CompanionConnection.REQUEST){
+            if(status==RESULT_OK)try{CompanionConnection.observe(this,SyncService.preferences(this).getBoolean("enabled",true));SyncService.resume(this);}
+            catch(Exception error){emit("error",message(error));}
+            emit("permissions",new JSONObject());return;
+        }
         if (status != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         String text = exportText;
@@ -475,7 +425,7 @@ public final class MainActivity extends Activity {
                 ui.post(()->new AlertDialog.Builder(this).setTitle(zh?"恢复完整备份":"Restore complete backup")
                     .setMessage(zh?"将恢复备份中的笔记、想法、项目、原图与日程。恢复前会保留当前数据的完整备份。外部文件可能需要重新授权。":"Restore notes, ideas, projects, original images and events. Current data is backed up first. External documents may need permission again.")
                     .setNegativeButton(android.R.string.cancel,null).setPositiveButton(android.R.string.ok,(dialog,which)->runWorker(()->{
-                        synchronized(DataBackup.LOCK){requireIdle();journalBusy=true;try{DataBackup.commit(this,restored);events.reload();}finally{journalBusy=false;}}
+                        synchronized(DataBackup.LOCK){requireIdle();JournalAccess.busy=true;try{DataBackup.commit(this,restored);events.reload();}finally{JournalAccess.busy=false;}}
                         emit("journal",new JSONObject());reschedule();
                     })).show());
             } else if (request == IMAGE) importImage(uri);
@@ -512,6 +462,9 @@ public final class MainActivity extends Activity {
         emit("permissions", new JSONObject());
     }
 
+    private String readJournalText() throws IOException {
+        try{return new String(journal.readFully(),StandardCharsets.UTF_8);}catch(FileNotFoundException missing){return "{}";}
+    }
     private final class Bridge {
         @JavascriptInterface public String resolveSync(String value) {return result(()->{
             synchronized(DataBackup.LOCK) {
@@ -534,23 +487,24 @@ public final class MainActivity extends Activity {
             return "data:"+info[1]+";base64,"+android.util.Base64.encodeToString(bytes,android.util.Base64.NO_WRAP);
         });}
         @JavascriptInterface public String settings() { return result(MainActivity.this::permissions); }
+        @JavascriptInterface public String updateState(){return result(()->AppUpdates.get(MainActivity.this).state());}
         @JavascriptInterface public String entries() { return result(events::details); }
 
         @JavascriptInterface public String load() {
             return result(() -> {
-                try { return new JSONObject(new String(journal.readFully(), StandardCharsets.UTF_8)); }
-                catch (FileNotFoundException none) { return new JSONObject(); }
+                synchronized(DataBackup.LOCK){loadedJournal=readJournalText();return new JSONObject(loadedJournal);}
             });
         }
 
         @JavascriptInterface public String save(String value) {
             return result(() -> {
                 synchronized(DataBackup.LOCK) {requireIdle();
+                if(loadedJournal!=null&&!loadedJournal.equals(readJournalText()))throw new IOException("记录已更新，请重新打开此页面再编辑 / Records changed; reopen this view before editing");
                 byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
                 if (bytes.length > MAX_JOURNAL) throw new IOException("Journal exceeds 100 MiB");
                 new JSONObject(value);
                 FileOutputStream out = journal.startWrite();
-                try { out.write(bytes); journal.finishWrite(out); }
+                try { out.write(bytes); journal.finishWrite(out);loadedJournal=value;SyncService.changed(MainActivity.this); }
                 catch (Exception error) { journal.failWrite(out); throw error; }
                 return true;
                 }
@@ -569,7 +523,7 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface public String discard(String key) {
             return result(() -> {
-                events.discard(key);
+                synchronized(DataBackup.LOCK){requireIdle();events.discard(key);}
                 reschedule();
                 return events.details();
             });
@@ -577,7 +531,7 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface public String keepCopy(String key) {
             return result(() -> {
-                events.keepCopy(key);
+                synchronized(DataBackup.LOCK){requireIdle();events.keepCopy(key);}
                 reschedule();
                 return events.details();
             });
@@ -585,7 +539,7 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface public String unlink() {
             return result(() -> {
-                events.unlink();
+                synchronized(DataBackup.LOCK){requireIdle();events.unlink();}
                 reschedule();
                 return events.details();
             });
@@ -602,11 +556,22 @@ public final class MainActivity extends Activity {
             ui.post(() -> {
                 try {
                     switch (action) {
+                        case "checkUpdate": AppUpdates.get(MainActivity.this).start(false);break;
+                        case "downloadUpdate": AppUpdates.get(MainActivity.this).start(true);break;
+                        case "installUpdate": new Thread(()->{try{syncGuard();AppUpdates.get(MainActivity.this).install(MainActivity.this);}catch(Exception error){emit("error",message(error));}},"Schedule update install").start();break;
                         case "bluetoothPermission":
                             if (Build.VERSION.SDK_INT >= 31) requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, 1);
                             break;
                         case "bluetoothSettings": startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); break;
+                        case "companion": CompanionConnection.request(MainActivity.this,SyncService.preferences(MainActivity.this).getString("peer",""));break;
+                        case "backgroundSettings": startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())));break;
                         case "wifiPermission": requestPermissions(new String[]{Build.VERSION.SDK_INT>=33?Manifest.permission.NEARBY_WIFI_DEVICES:Manifest.permission.ACCESS_FINE_LOCATION},3);break;
+                        case "autoSync": {
+                            JSONObject config=new JSONObject(value);
+                            SyncService.configure(MainActivity.this,config.getString("peer"),config.getBoolean("enabled"),config.getInt("hours"));
+                            if(config.getBoolean("enabled"))startSync(config.getString("peer"));else stopSync();
+                            emit("permissions",new JSONObject());break;
+                        }
                         case "sync": startSync(value); break;
                         case "stop": stopSync(); break;
                         case "notification":

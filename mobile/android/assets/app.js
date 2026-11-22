@@ -94,7 +94,6 @@ function heading(text, ...controls) {
 
 function selectTab(value) {
   closeEditor();
-  if (tab === 'sync' && value !== 'sync') action('stop');
   tab = value;
   if (tab !== 'projects') project = null;
   render(false);
@@ -866,25 +865,36 @@ function renderSync() {
   const sync = node('section', undefined, 'card');
   sync.append(node('p', t('双向同步笔记、想法、项目名称与绑定、原图及全部日程。外部文件与文件夹留在原设备。', 'Sync notes, ideas, project names and bindings, original images and all events in both directions. External files and folders stay on their device.'), 'muted'));
   const stateLabel = permissions.status || 'idle';
-  const connected = !['idle'].includes(stateLabel) && !stateLabel.startsWith('error:');
   const ports = permissions.paired || [];
   const paired = select([['', t('选择已配对的电脑', 'Choose a paired PC')],
     ...ports.map(device => [device.address, device.name || device.address])], '');
-  try { paired.value = sessionStorage.getItem('peer') || ''; } catch {}
-  const connect = button(t('等待电脑连接', 'Wait for Windows'), () => {
-    if (!paired.value) { notify(t('请选择电脑。', 'Choose a computer.')); return; }
-    try { sessionStorage.setItem('peer', paired.value); } catch {}
-    action('sync', paired.value);
-  }, 'primary');
+  try { paired.value = permissions.autoSync?.peer || sessionStorage.getItem('peer') || ''; } catch {}
+  paired.addEventListener('change',()=>{
+    if(!paired.value)return;
+    action('autoSync',JSON.stringify({enabled:permissions.autoSync?.enabled!==false,peer:paired.value,hours:permissions.autoSync?.hours||2}));
+  });
   if (!permissions.bluetoothPermission) sync.append(button(t('允许附近设备', 'Allow Nearby devices'), () => action('bluetoothPermission'), 'primary'));
-  else if (permissions.bluetooth) sync.append(field(t('电脑', 'Computer'), paired), connected ? button(t('停止等待', 'Stop listening'), () => action('stop')) : connect);
+  else if (permissions.bluetooth) sync.append(field(t('电脑', 'Computer'), paired));
   else sync.append(node('p', t('蓝牙不可用或未开启。', 'Bluetooth is unavailable or turned off.')));
   sync.append(button(t('系统蓝牙设置', 'Bluetooth settings'), () => action('bluetoothSettings'), 'quiet'));
+  const auto=permissions.autoSync||{enabled:true,hours:2};
+  const automatic=node('label',undefined,'check-row'),toggle=document.createElement('input');toggle.type='checkbox';toggle.checked=auto.enabled;
+  toggle.addEventListener('change',()=>{
+    if(!toggle.checked){action('stop');return;}
+    if(!paired.value){toggle.checked=false;notify(t('请先选择已配对电脑。','Choose a paired computer first.'));return;}
+    action('autoSync',JSON.stringify({enabled:toggle.checked,peer:paired.value,hours:auto.hours}));
+  });
+  automatic.append(toggle,document.createTextNode(t('后台自动同步','Automatic background sync')));sync.append(automatic);
+  if(auto.peer&&permissions.companionSupported&&!permissions.companionAssociated)sync.append(button(t('允许后台自动连接','Allow background reconnection'),()=>action('companion'),'quiet'));
+  sync.append(node('p',t('首次选定电脑后会记住设备，无需再次点击连接。允许后台连接后，系统可在电脑重新连接时唤醒同步。','Your selected computer is remembered. No repeated Connect action is needed. Background permission lets Android wake sync when the computer reconnects.'),'muted'));
+  sync.append(button(t('后台运行设置','Background app settings'),()=>action('backgroundSettings'),'quiet'));
+  sync.append(node('p',t(`每 ${auto.hours} 小时尝试，重连后同步一次。周期在电脑端修改。后台运行会显示通知，有草稿时延后。`,`Try every ${auto.hours} hours and after reconnecting. Change the interval on Windows. A background notification stays visible; unsaved drafts defer sync.`),'muted'));
   if(!permissions.wifiPermission)sync.append(button(t('允许 Wi-Fi 直连加速', 'Allow direct Wi-Fi transfer'),()=>action('wifiPermission'),'quiet'));
-  sync.append(node('p',t('蓝牙自动交换连接信息，优先使用局域网，必要时建立临时热点。电脑会暂时切换 Wi-Fi，结束后恢复。原图只补传缺失部分。','Bluetooth exchanges connection details automatically. Use LAN when reachable, otherwise a temporary hotspot. The PC may temporarily switch Wi-Fi and restore it afterward. Only missing original images are transferred.'),'muted'));
+  sync.append(node('p',t('自动同步优先局域网，否则使用蓝牙，不切换网络。电脑手动同步时可启用临时热点加速。原图只补传缺失部分。','Automatic sync uses LAN or Bluetooth without switching networks. Manual sync on Windows can use a temporary hotspot. Only missing original images are transferred.'),'muted'));
   const status = {
     starting: t('正在打开蓝牙服务…', 'Opening Bluetooth service…'),
-    waiting: t('已在等待，请在 Windows 端点击「双向同步」。', 'Waiting. Click Two-way sync on Windows.'),
+    waiting: t('后台已就绪，可离开此页。电脑自动检查连接，也可手动同步。', 'Background sync is ready. You can leave this page. Windows checks the connection automatically.'),
+    offline: t('等待蓝牙恢复，现有记录已保留。','Waiting for Bluetooth. Existing records are preserved.'),
     syncing: t('正在同步…', 'Syncing…'),
     'wifi-setup':t('正在建立临时 Wi-Fi 直连…','Creating a temporary direct Wi-Fi connection…'),
     'wifi-transfer':t('正在通过加密 Wi-Fi 同步…','Syncing over encrypted Wi-Fi…'),
@@ -892,11 +902,12 @@ function renderSync() {
     synced: t('已同步，可继续接收下一次同步。', 'Synced. Ready for another sync.'),
     review: t('同步已暂停，两端数据未修改。请在电脑确认冲突，然后继续同步。', 'Sync paused. Both devices are unchanged. Review conflicts on Windows, then resume sync.'),
     legacy: t('电脑为旧版：仅共享日程已同步，笔记和手机本地日程尚未同步。', 'Older Windows app: shared events only. Notes and phone-only events were not synced.'),
-    idle: t('先在系统设置配对。在此选择电脑后，再用 Windows 配套程序发起同步。', 'Pair in system settings, select the PC here, and start sync from the Windows companion.')
+    idle: t('首次在系统设置配对并选定电脑；开启后台自动同步后，无需保持此页打开。', 'Pair and select your computer once, then enable background sync. You can leave this page.')
   };
   const imageProgress=/^images-(send|receive):([^:]+):(\d+)\/(\d+)$/.exec(stateLabel);
   const progressText=imageProgress?`${imageProgress[1]==='send'?t('发送原图','Sending originals'):t('接收原图','Receiving originals')} ${imageProgress[2]} · ${(Number(imageProgress[3])/1048576).toFixed(1)}/${(Number(imageProgress[4])/1048576).toFixed(1)} MiB`:null;
-  sync.append(node('p', progressText || status[stateLabel] || stateLabel.replace(/^error:/,''), stateLabel.startsWith('error:') ? 'error' : 'muted'));
+  sync.append(node('p', progressText || (stateLabel.startsWith('retrying:')?t('连接中断，正在等待电脑自动重连，无需重新配对。','Connection interrupted. Waiting for Windows to reconnect; pairing is retained.'):status[stateLabel] || stateLabel.replace(/^error:/,'')), stateLabel.startsWith('error:') ? 'error' : 'muted'));
+  if(auto.lastError){const details=node('details');details.append(node('summary',t('上次连接错误','Last connection error')),node('p',auto.lastError,'muted'));sync.append(details);}
   if (events.lastSync) sync.append(node('p', t('上次同步 ', 'Last sync ') + new Date(events.lastSync).toLocaleString()));
   if (events.pending) sync.append(node('p', t('手机待同步改动 ', 'Pending phone changes ') + events.pending));
   if (events.retry) sync.append(node('p', t('上次未写入 ', 'Last unapplied change ') + events.retry, 'muted'));
@@ -939,15 +950,28 @@ function renderSync() {
     button(t('完整备份（含原图）','Complete backup (original images)'),()=>action('backup')),
     button(t('恢复完整备份','Restore complete backup'),()=>action('restore')));
   screen.append(transfer);
+  screen.append(heading(t('软件更新','Software updates')));
+  const updates=node('section',undefined,'card'),update=call('updateState');
+  const labels={idle:t('从 GitHub Release 检查正式版本。','Check stable releases on GitHub.'),checking:t('正在检查更新…','Checking for updates…'),current:t('暂无更高版本。','No newer version available.'),available:t('有新版本可用。','A newer version is available.'),downloading:t(`正在下载 ${update.percent}%`,`Downloading ${update.percent}%`),ready:t('更新已校验，可交给系统安装。','Update verified. Ready for system installation.'),error:update.error};
+  updates.append(node('p',t('当前版本 ','Current version ')+update.current+(update.version?' → '+update.version:'')),node('p',labels[update.phase]||update.phase,'muted'));
+  const checkUpdate=button(t('检查更新','Check for updates'),()=>action('checkUpdate'),'quiet');checkUpdate.disabled=update.busy;updates.append(checkUpdate);
+  if(update.available){const install=button(update.ready?t('安装更新','Install update'):t('下载更新','Download update'),()=>action(update.ready?'installUpdate':'downloadUpdate'),'primary');install.disabled=update.busy;updates.append(install);}
+  if(update.notes){const details=node('details'),notes=node('div',update.notes,'update-notes');details.append(node('summary',t('版本说明','Release notes')),notes);updates.append(details);}
+  updates.append(node('p',t('覆盖安装保留记录与原图。首次安装更新需在系统中允许此来源，返回后再点安装。','Updating preserves records and originals. On first use, allow this installation source in system settings, return and tap Install again.'),'muted'));
+  screen.append(updates);
 }
 
 window.receive = (kind, value) => {
   try {
     switch (kind) {
-      case 'journal': state=Object.assign(Journal.blank(),call('load'));events=call('entries');$('#application').inert=false;render();break;
+      case 'journal':
+        $('#application').inert=!!settings().syncBusy;
+        if(!activeDraft&&!editor.open&&!inlineEditor){state=Object.assign(Journal.blank(),call('load'));events=call('entries');render();}
+        break;
       case 'day': changeDay(value); break;
       case 'events': events = call('entries'); if (!activeDraft && !editor.open) render(); break;
       case 'status':
+      case 'update':
       case 'permissions': if (tab === 'sync' && !editor.open) render(); break;
       case 'error': notify(value); break;
       case 'image': attachImage(value); break;
@@ -996,32 +1020,13 @@ editor.addEventListener('close', () => { if (!editor.open && !inlineEditor) acti
 const syncEvents = entities => Object.entries(entities).filter(([key])=>key.startsWith('event/')).map(([,value])=>value);
 window.syncRequest = async (id, operation, payload) => {
   try {
-    $('#application').inert=true;
-    const model=ScheduleSyncModel;let value;
-    if(operation==='export') {
+    if(operation==='guard'||operation==='export') {
       if(activeDraft||editor.open||inlineEditor)throw Error(t('请先保存当前编辑。','Save the current edit first.'));
-      state=Object.assign(Journal.blank(),call('load'));events=call('entries');
-      if(state._sync?.source&&state._sync.source!==payload.source)throw Error('This journal is linked to another computer');
-      const exported=await model.phoneExport(state,events.events,id=>call(payload.batched?'imageDescriptor':'imageData',id));
-      const base=model.copy(state._sync?.base||{});
-      if(!state._sync) {
-        const raw=call('syncState');
-        for(const [key,event] of Object.entries(raw.remote))base['event/'+key]=event;
-        for(const [key,change] of Object.entries(raw.outbox)) {
-          if(change.base)base['event/'+key]=change.base;else delete base['event/'+key];
-        }
-      }
-      value={schema:2,source:payload.source,base,...exported};
-    } else if(operation==='apply') {
-      const {sent,response}=payload;
-      if(response.schema!==2||response.source!==sent.source)throw Error('Journal source mismatch');
-      model.validate(response.entities);await model.validateAssets(response.assets,response.entities);
-      const accepted=model.accept(sent.base,sent.entities,response);
-      const journal=model.phoneImport(accepted.entities,state,{source:sent.source,base:accepted.base,conflicts:accepted.conflicts});
-      value={journal,events:syncEvents(accepted.entities)};
-    } else throw Error('Unsupported journal operation');
+      $('#application').inert=true;
+    }
+    const value=operation==='guard'?{}:await syncOperation(operation,payload,call);
     NativeSchedule.syncReply(id,JSON.stringify({ok:true,value}));
-  } catch(error) {NativeSchedule.syncReply(id,JSON.stringify({ok:false,error:error.message}));}
+  } catch(error) {$('#application').inert=false;NativeSchedule.syncReply(id,JSON.stringify({ok:false,error:error.message}));}
 };
 async function resolveJournalConflict(key, useDesktop) {
   try {
@@ -1045,6 +1050,7 @@ async function resolveJournalConflict(key, useDesktop) {
 $('#today').addEventListener('click', () => changeDay(today()));
 try {
   permissions = settings();
+  $('#application').inert=!!permissions.syncBusy;
   zh = permissions.language === 'zh';
   $('#today').textContent = t('今天', 'Today');
   state = Object.assign(Journal.blank(), call('load'));

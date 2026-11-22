@@ -88,7 +88,12 @@ def build(out, cache):
                     '/win32icon:' + str(out / 'schedule.ico'), '/out:' + str(out / 'Journal.exe')]
                    + ['/reference:' + r for r in refs]
                    + [str(p) for p in sorted((ROOT / 'src/native').glob('*.cs'))]
-                   + [str(ROOT / 'src/shared/ApiProtocol.cs')], check=True)
+                   + [str(ROOT / 'src/shared/ApiProtocol.cs'), str(ROOT / 'src/shared/UpdateInstall.cs')], check=True)
+    subprocess.run([str(csc), '/nologo', '/utf8output', '/target:winexe', '/platform:x64',
+                    '/out:' + str(out / 'Schedule.Update.exe'), '/reference:System.Web.Extensions.dll',
+                    '/reference:System.Windows.Forms.dll', '/reference:System.IO.Compression.dll',
+                    '/reference:System.IO.Compression.FileSystem.dll',
+                    str(ROOT / 'src/shared/UpdateInstall.cs'), str(ROOT / 'src/updater/Program.cs')], check=True)
     subprocess.run([str(csc), '/nologo', '/utf8output', '/target:exe', '/platform:x64',
                     '/out:' + str(out / 'Schedule.Cli.exe'), '/reference:System.Web.Extensions.dll',
                     str(ROOT / 'src/shared/ApiProtocol.cs'), str(ROOT / 'src/cli/ScheduleCli.cs')], check=True)

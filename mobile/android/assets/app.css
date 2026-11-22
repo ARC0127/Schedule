@@ -118,3 +118,4 @@ fieldset .tick { margin-right: .68rem; }
 #toast { position: fixed; z-index: 2; bottom: 4.5rem; left: 50%; transform: translateX(-50%); width: max-content; max-width: 90vw; padding: .66rem .9rem; color: white; background: #263c31; border-radius: .6rem; box-shadow: 0 3px 14px #172d2440; }
 dialog .error { color: var(--red); white-space: normal; margin: .36rem 0; }
 
+.update-notes { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow-y: auto; font-size: 13px; line-height: 1.6; margin-top: 10px; }

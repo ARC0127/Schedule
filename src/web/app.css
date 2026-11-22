@@ -2113,3 +2113,6 @@ html #journal-ui .j-year-grid {
     display: none;
   }
 }
+.j-auto-sync-row { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:12px 0 4px; }
+.j-auto-sync-row select { border:1px solid var(--line, #dde4db); background:var(--paper, #fafbf8); color:inherit; border-radius:8px; padding:6px 10px; font:inherit; }
+#j-update-notes { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow-y: auto; font-size: 12px; line-height: 1.7; margin-top: 12px; }

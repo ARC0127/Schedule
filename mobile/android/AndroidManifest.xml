@@ -1,10 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="io.github.arc0127.schedule" android:versionCode="10" android:versionName="1.1.8">
+    package="io.github.arc0127.schedule" android:versionCode="14" android:versionName="1.1.12">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36"/>
     <uses-feature android:name="android.hardware.bluetooth" android:required="false"/>
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation"/>
@@ -12,6 +13,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.REQUEST_COMPANION_START_FOREGROUND_SERVICES_FROM_BACKGROUND"/>
+    <uses-permission android:name="android.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE"/>
     <application android:label="Schedule" android:icon="@mipmap/icon"
         android:allowBackup="false" android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">
@@ -21,6 +27,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <service android:name=".SyncService" android:exported="false" android:foregroundServiceType="connectedDevice" android:stopWithTask="false"/>
+        <provider android:name=".UpdateProvider" android:authorities="io.github.arc0127.schedule.updates" android:exported="false" android:grantUriPermissions="true"/>
+        <service android:name=".CompanionPresenceService" android:exported="true" android:permission="android.permission.BIND_COMPANION_DEVICE_SERVICE">
+            <intent-filter><action android:name="android.companion.CompanionDeviceService"/></intent-filter>
+        </service>
+        <receiver android:name=".SyncService$Boot" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/></intent-filter>
+        </receiver>
         <receiver android:name=".ReminderReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>

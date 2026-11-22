@@ -36,8 +36,21 @@ public final class AndroidTests extends Instrumentation {
             else if("full".equals(mode))fullSync();
             else if("batch-seed".equals(mode))batchSeed();
             else if("batch-recovery".equals(mode))batchRecovery();
-            else if("wifi".equals(mode)||"wifi-repeat".equals(mode))wifiSync();
+            else if("wifi".equals(mode)||"wifi-repeat".equals(mode)||mode.startsWith("auto-wifi"))wifiSync();
             else if("showcase".equals(mode))showcase();
+            else if("automatic".equals(mode))automaticSync();
+            else if("reconnect".equals(mode))reconnect();
+            else if("ota".equals(mode))ota();
+            else if("presence-setup".equals(mode)){
+                SyncService.configure(getTargetContext(),"00:11:22:33:44:55",true,2);
+                CompanionConnection.observe(getTargetContext(),true);
+                check(CompanionConnection.associated(getTargetContext(),"00:11:22:33:44:55"),"emulator has system-approved selected companion for presence test");
+                check(SyncService.current==null&&SyncService.activity==null,"presence test begins with no listener or Activity");
+                try(android.os.ParcelFileDescriptor command=getUiAutomation().executeShellCommand("cmd companiondevice simulate-device-event 1 2");FileInputStream output=new FileInputStream(command.getFileDescriptor())){while(output.read()!=-1){}}
+                for(int i=0;i<100&&SyncService.current==null;i++)SystemClock.sleep(100);
+                check(SyncService.current!=null&&SyncService.activity==null,"Android system binds companion service and starts sync without opening the Activity");
+                runOnMainSync(()->SyncService.disable(getTargetContext()));
+            }
             else if("gestures".equals(mode))verifyGestures();
             else if (bootSeed) {
                 long at = System.currentTimeMillis() + 120_000;
@@ -60,6 +73,121 @@ public final class AndroidTests extends Instrumentation {
         Bundle result = new Bundle();
         result.putString("stream", "PASS " + explanation + "\n");
         sendStatus(1, result);
+    }
+
+    private void ota()throws Exception {
+        Context context=getTargetContext();
+        JSONObject asset=new JSONObject().put("name","Schedule.Android-9.0.0.apk").put("browser_download_url","https://github.com/ARC0127/Schedule/releases/download/v9.0.0/Schedule.Android-9.0.0.apk").put("size",3).put("digest","sha256:"+String.join("",Collections.nCopies(64,"a")));
+        JSONObject release=new JSONObject().put("draft",false).put("prerelease",false).put("tag_name","v9.0.0").put("body","<script>notes</script>").put("assets",new JSONArray().put(asset));
+        check(AppUpdates.select(release,"1.1.12").getString("version").equals("9.0.0"),"select higher Android version independently of Windows tag");
+        check(AppUpdates.select(release,"9.0.0")==null&&AppUpdates.select(release,"10.0.0")==null,"OTA never offers same or older version");
+        release.put("prerelease",true);check(AppUpdates.select(release,"1.1.12")==null,"prerelease excluded");release.put("prerelease",false);
+        asset.put("browser_download_url","https://example.com/app.apk");boolean rejected=false;try{AppUpdates.select(release,"1.1.12");}catch(IOException expected){rejected=true;}check(rejected,"foreign update URL rejected");
+        asset.put("browser_download_url","https://github.com/ARC0127/Schedule/releases/download/v9.0.0/Schedule.Android-9.0.0.apk");asset.remove("digest");rejected=false;try{AppUpdates.select(release,"1.1.12");}catch(IOException expected){rejected=true;}check(rejected,"missing release digest rejected");
+        android.content.pm.Signature first=new android.content.pm.Signature(new byte[]{1,2}),other=new android.content.pm.Signature(new byte[]{3,4});
+        check(AppUpdates.sameCertificates(new android.content.pm.Signature[]{first},new android.content.pm.Signature[]{first}),"same signing certificate accepted");
+        check(!AppUpdates.sameCertificates(new android.content.pm.Signature[]{first},new android.content.pm.Signature[]{other})&&!AppUpdates.sameCertificates(new android.content.pm.Signature[0],new android.content.pm.Signature[0]),"different or missing signer rejected");
+        File future=new File(context.getExternalFilesDir(null),"ota-future.apk");JSONObject next=new JSONObject().put("version","1.1.13").put("size",future.length()).put("digest",SyncAssets.hash(future));
+        AppUpdates.get(context).validate(future,next);check(true,"newer same-signed real APK passes package and certificate verification");
+        next.put("digest",String.join("",Collections.nCopies(64,"0")));rejected=false;try{AppUpdates.get(context).validate(future,next);}catch(IOException expected){rejected=true;}check(rejected,"corrupted APK digest rejected before installer");
+        File cached=AppUpdates.apk(context);cached.getParentFile().mkdirs();Files.copy(future.toPath(),cached.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        android.net.Uri uri=android.net.Uri.parse("content://"+context.getPackageName()+".updates/update.apk");
+        try(InputStream in=context.getContentResolver().openInputStream(uri)){check(in.read()=='P'&&in.read()=='K',"installer URI reads APK bytes through read-only provider");}
+        rejected=false;try{context.getContentResolver().openFileDescriptor(uri,"w");}catch(FileNotFoundException expected){rejected=true;}check(rejected,"installer provider rejects write access");
+        rejected=false;try{context.getContentResolver().openInputStream(android.net.Uri.parse("content://"+context.getPackageName()+".updates/journal.json"));}catch(FileNotFoundException expected){rejected=true;}check(rejected,"installer provider does not expose user records");
+        Activity activity=startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        WebView web=(WebView)((ViewGroup)((ViewGroup)activity.findViewById(android.R.id.content)).getChildAt(0)).getChildAt(0);
+        for(int i=0;i<80&&!"true".equals(js(web,"typeof renderSync==='function'"));i++)SystemClock.sleep(100);
+        js(web,"selectTab('sync');true");check("true".equals(js(web,"document.body.textContent.includes('Software updates')||document.body.textContent.includes('软件更新')")),"Android update entry renders in sync settings");runOnMainSync(activity::finish);
+    }
+    private void reconnect()throws Exception {
+        Context context=getTargetContext();String peer="00:11:22:33:44:55";
+        runOnMainSync(()->SyncService.disable(context));SystemClock.sleep(500);
+        SyncService.configure(context,peer,false,2);
+        ByteArrayOutputStream input=new ByteArrayOutputStream(),output=new ByteArrayOutputStream();
+        Protocol.write(input,Protocol.frame("hello").put("autoProbe",true).put("continueSync",true).put("hours",2));
+        Protocol.write(input,Protocol.frame("auto-next").put("sync",true));
+        Protocol.write(input,Protocol.frame("hello").put("source","kept-connection").put("journalSync",2));
+        JSONObject hello=BluetoothSync.handshake(context,new ByteArrayInputStream(input.toByteArray()),output);
+        check(hello.getString("source").equals("kept-connection"),"phone continues transfer on the existing authenticated probe stream");
+        check(Protocol.read(new ByteArrayInputStream(output.toByteArray()),"auto-status").getBoolean("continueSync"),"phone advertises acknowledged continuation");
+        input.reset();output.reset();Protocol.write(input,Protocol.frame("hello").put("autoProbe",true).put("continueSync",true));
+        Protocol.write(input,Protocol.frame("auto-next").put("sync",false));
+        check(BluetoothSync.handshake(context,new ByteArrayInputStream(input.toByteArray()),output)==null,"unchanged probe closes after explicit no-transfer decision");
+        input.reset();output.reset();Protocol.write(input,Protocol.frame("hello").put("autoProbe",true));
+        check(BluetoothSync.handshake(context,new ByteArrayInputStream(input.toByteArray()),output)==null,"old desktop one-shot probes remain compatible");
+        check(BluetoothSync.transportFailure(new IOException("outer",new IOException("Broken pipe"))),"nested broken pipe is recoverable transport failure");
+        check(!BluetoothSync.transportFailure(new IOException("Unsaved draft")),"draft or validation failures are not hidden as transport retries");
+        IOException interrupted=new IOException("No transfer progress for 120 seconds",new IOException("bt socket closed, read return: -1"));
+        check(BluetoothSync.failureStatus("wifi-negotiation",interrupted).startsWith("listener-error:wifi-negotiation:"),"closed transport requests a fresh RFCOMM listener, not reuse of its old registration");
+        check(BluetoothSync.errorDetails(interrupted).contains("120 seconds")&&BluetoothSync.errorDetails(interrupted).contains("read return: -1"),"connection details retain timeout cause and underlying socket error");
+        check(BluetoothSync.failureStatus("journal-transfer",new IOException("Unsaved draft")).startsWith("error:"),"draft protection does not trigger listener replacement");
+        runOnMainSync(()->CompanionConnection.appeared(context,peer));SystemClock.sleep(500);
+        check(SyncService.current==null,"system presence callback respects explicit pause");
+        SyncService.configure(context,peer,true,2);
+        runOnMainSync(()->CompanionConnection.appeared(context,"00:11:22:33:44:66"));SystemClock.sleep(300);
+        check(SyncService.current==null,"another paired device cannot wake selected-peer synchronization");
+        runOnMainSync(()->CompanionConnection.appeared(context,peer));
+        for(int i=0;i<100&&SyncService.current==null;i++)SystemClock.sleep(100);
+        check(SyncService.current!=null&&SyncService.activity==null,"selected-peer presence starts service without opening an Activity");
+        SyncService service=SyncService.current;
+        runOnMainSync(()->{try{java.lang.reflect.Method method=SyncService.class.getDeclaredMethod("listenerStatus",String.class);method.setAccessible(true);method.invoke(service,BluetoothSync.failureStatus("wifi-negotiation",interrupted));}catch(Exception e){throw new RuntimeException(e);}});
+        java.lang.reflect.Field retryField=SyncService.class.getDeclaredField("retry");retryField.setAccessible(true);
+        check(retryField.get(service)!=null&&SyncService.status.startsWith("retrying:"),"transport failure schedules automatic listener rebuilding in the running foreground service");
+        check(SyncService.settings(context).getString("peer").equals(peer)&&SyncService.settings(context).getBoolean("enabled"),"rebuilding retains selected peer and enabled setting");
+        runOnMainSync(()->SyncService.disable(context));SystemClock.sleep(500);
+        check(SyncService.settings(context).getString("peer").equals(peer),"pausing retains computer identity for subsequent reconnection");
+        Activity activity=startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        WebView web=(WebView)((ViewGroup)((ViewGroup)activity.findViewById(android.R.id.content)).getChildAt(0)).getChildAt(0);
+        for(int i=0;i<80&&!"true".equals(js(web,"typeof renderSync==='function'"));i++)SystemClock.sleep(100);
+        js(web,"selectTab('sync');true");
+        check("true".equals(js(web,"![...document.querySelectorAll('button')].some(b=>/等待电脑连接|Wait for Windows/.test(b.textContent))")),"sync screen no longer requires a separate wait-for-connection button");
+        runOnMainSync(activity::finish);
+    }
+
+    private void automaticSync()throws Exception {
+        Context context=getTargetContext();upgradeSeed();
+        context.getSharedPreferences("automatic-sync",Context.MODE_PRIVATE).edit().clear().commit();
+        check(SyncService.hours(context)==2,"automatic sync defaults to two hours");
+        Activity activity=startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        WebView web=(WebView)((ViewGroup)((ViewGroup)activity.findViewById(android.R.id.content)).getChildAt(0)).getChildAt(0);
+        for(int i=0;i<80&&!"true".equals(js(web,"typeof window.syncRequest==='function'&&typeof syncOperation==='function'"));i++)SystemClock.sleep(100);
+        SystemClock.sleep(500);
+        runOnMainSync(()->context.startForegroundService(new Intent(context,SyncService.class)));
+        for(int i=0;i<100&&SyncService.current==null;i++)SystemClock.sleep(100);
+        check(SyncService.current!=null,"foreground connected-device service starts independently of Bluetooth test hardware");
+        JournalAccess access=SyncService.current.access;String source=String.join("",Collections.nCopies(64,"a"));
+        byte[] before=Files.readAllBytes(new File(context.getFilesDir(),"journal.json").toPath());
+        js(web,"activeDraft={text:'UNSAVED-DRAFT'};true");
+        boolean refused=false;try{access.prepare(source,true);}catch(Exception expected){refused=true;}finally{access.end();}
+        check(refused,"automatic prepare waits while an unsaved draft exists");
+        check("true".equals(js(web,"activeDraft.text==='UNSAVED-DRAFT'&&!document.querySelector('#application').inert")),"deferred sync preserves draft and editing ability");
+        check(Arrays.equals(before,Files.readAllBytes(new File(context.getFilesDir(),"journal.json").toPath())),"deferred sync does not write journal");
+        js(web,"activeDraft=null;true");
+        runOnMainSync(activity::finish);SystemClock.sleep(500);
+        check(SyncService.activity==null&&SyncService.current!=null,"destroying Activity leaves background service alive");
+        JSONObject sent=access.prepare(source,true);
+        check(sent.getJSONObject("entities").has("idea/phone-idea"),"headless service exports ideas without Activity");
+        check(sent.getJSONObject("assets").length()>0,"headless service preserves original-image descriptors");
+        check(!JournalTransfer.accept(source,sent,new JSONObject().put("schema",2).put("source",source).put("status","pending-review"),access),"background conflict response cannot commit records");access.end();
+        check(Arrays.equals(before,Files.readAllBytes(new File(context.getFilesDir(),"journal.json").toPath())),"conflict leaves exact journal bytes unchanged");
+        sent=access.prepare(source,true);JSONObject entities=new JSONObject(sent.getJSONObject("entities").toString());
+        entities.put("note/2034-03-13",new JSONObject().put("date","2034-03-13").put("text","BACKGROUND DESKTOP NOTE").put("title","").put("important",false).put("formats",new JSONArray()));
+        JSONObject response=new JSONObject().put("schema",2).put("source",source).put("entities",entities).put("conflicts",new JSONObject()).put("assets",sent.getJSONObject("assets"));
+        check(JournalTransfer.accept(source,sent,response,access),"headless service commits accepted records");access.end();
+        JSONObject saved=new JSONObject(new String(Files.readAllBytes(new File(context.getFilesDir(),"journal.json").toPath()),java.nio.charset.StandardCharsets.UTF_8));
+        check(saved.getJSONObject("days").getString("2034-03-13").equals("BACKGROUND DESKTOP NOTE"),"background note persisted to disk");
+        check(saved.toString().contains("phone-idea")&&saved.toString().contains("phone-project"),"phone ideas and project binding survive background commit");
+        check(EventStore.get(context).visible().toString().contains("手机原有日程"),"phone event survives background commit");
+        check(!JournalAccess.busy,"background session releases shared edit lock");
+        final Activity reopened=startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        WebView again=(WebView)((ViewGroup)((ViewGroup)reopened.findViewById(android.R.id.content)).getChildAt(0)).getChildAt(0);
+        for(int i=0;i<80&&!"true".equals(js(again,"typeof state!=='undefined'&&!!state?.days?.['2034-03-13']"));i++)SystemClock.sleep(100);
+        check("true".equals(js(again,"state.days['2034-03-13']==='BACKGROUND DESKTOP NOTE'")),"reopened real editor loads background changes");
+        js(again,"selectTab('sync');document.querySelector('.check-row input').click();true");
+        for(int i=0;i<50&&SyncService.current!=null;i++)SystemClock.sleep(100);
+        check(!SyncService.settings(context).getBoolean("enabled")&&SyncService.current==null,"UI pause works without an available peer, persists and stops foreground service");
+        runOnMainSync(reopened::finish);
     }
 
     private static final String ORIGINAL="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+tmVQAAAAASUVORK5CYII=";
@@ -220,6 +348,15 @@ public final class AndroidTests extends Instrumentation {
         try {
             for(int i=0;i<60&&!"true".equals(js(web,"typeof window.syncRequest==='function'"));i++)SystemClock.sleep(200);
             JournalTransfer.Access access=((MainActivity)activity).fullJournalAccess();
+            if(mode.startsWith("auto-wifi")) {
+                SyncService.preferences(context).edit().putBoolean("enabled",true).commit();
+                runOnMainSync(()->context.startForegroundService(new Intent(context,SyncService.class)));
+                for(int i=0;i<100&&SyncService.current==null;i++)SystemClock.sleep(100);
+                check(SyncService.current!=null,"background service ready for real TLS exchange");
+                access=SyncService.current.access;runOnMainSync(activity::finish);
+                for(int i=0;i<100&&SyncService.activity!=null;i++)SystemClock.sleep(100);
+                check(SyncService.activity==null,"real TLS exchange runs with Activity destroyed");
+            }
             try(WifiSync wifi=new WifiSync()) {
                 wifi.start(access,()->{},s->{});
                 File offer=new File(context.getExternalFilesDir(null),"wifi-offer.json");
@@ -245,7 +382,7 @@ public final class AndroidTests extends Instrumentation {
                 check(!new File(context.getFilesDir(),"pending-metadata.json").exists(),"metadata transaction completed without recovery marker");
             }
 
-        }finally{runOnMainSync(activity::finish);}
+        }finally{runOnMainSync(()->{if(mode.startsWith("auto-wifi"))SyncService.disable(context);activity.finish();});}
     }
 
     private JSONObject makeEvent(long at, String title, String id) throws Exception {

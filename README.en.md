@@ -3,7 +3,7 @@
 <p align="center"><b>A little space for a clearer day.</b></p>
 <p align="center">Windows × Android · Calendars, ideas and projects · Local storage, two-way sync</p>
 <p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
-<p align="center"><a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.10">Download</a> · <a href="docs/releases/0.0.10.md">Release notes</a> · <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a></p>
+<p align="center"><a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.13">Download</a> · <a href="docs/releases/0.0.13.md">Release notes</a> · <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a></p>
 
 ![Schedule: organize on your desktop, capture ideas on your phone](docs/images/hero.png)
 
@@ -11,9 +11,9 @@
 
 ## Choose your device
 
-| Windows 0.0.10 | Android 1.1.8 | Desktop + phone |
+| Windows 0.0.13 | Android 1.1.12 | Desktop + phone |
 | :--- | :--- | :--- |
-| [**Download Windows ZIP**](https://github.com/ARC0127/Schedule/releases/download/v0.0.10/Schedule-0.0.10-windows-x64.zip) | [**Download Android APK**](https://github.com/ARC0127/Schedule/releases/download/v0.0.10/Schedule.Android-1.1.8.apk) | [**Download both**](https://github.com/ARC0127/Schedule/releases/download/v0.0.10/Schedule-Windows-0.0.10-Android-1.1.8.zip) |
+| [**Download Windows ZIP**](https://github.com/ARC0127/Schedule/releases/download/v0.0.13/Schedule-0.0.13-windows-x64.zip) | [**Download Android APK**](https://github.com/ARC0127/Schedule/releases/download/v0.0.13/Schedule.Android-1.1.12.apk) | [**Download both**](https://github.com/ARC0127/Schedule/releases/download/v0.0.13/Schedule-Windows-0.0.13-Android-1.1.12.zip) |
 | Extract the entire folder and open `Journal.exe` | Install over your existing app to keep its data | Both apps and installation instructions |
 
 Windows requires Windows 10/11 x64, .NET Framework 4.8 and [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/). Android requires 8.0 or later. The Windows executable is unsigned and may show an unknown-publisher prompt. Python and Node.js are not required to use the apps.
@@ -28,14 +28,14 @@ Windows requires Windows 10/11 x64, .NET Framework 4.8 and [WebView2 Runtime](ht
 
 On Windows, connect local folders, drop files, resize your sidebar and editor, and preview today from a floating desktop icon or the tray. Codex and Claude Code share the same local read/write interface.
 
-## New: larger photo collections, resumable by file
+## New: in-app updates and background sync
 
-- **Separate original files:** each image transfers in verified 192 KiB chunks, outside the 100 MiB metadata quota.
-- **Keep completed transfers:** retries skip verified files already received. An incomplete image restarts from its beginning.
-- **Bluetooth discovery, Wi-Fi acceleration:** try the LAN first, then a temporary phone hotspot. Unavailable connections visibly fall back to Bluetooth.
-- **Review conflicting changes:** independent additions merge automatically. Conflicts pause record changes for desktop confirmation.
+- **Update in the app:** read stable GitHub release notes, then download and verify the package. Windows exits and restarts; Android asks for installation confirmation.
+- **Sync every two hours:** select the paired device and enable sync once. Reconnection and saved changes also trigger attempts. Keep Windows in the tray; Android's sync page can be closed.
+- **Keep conflict review:** independent additions merge automatically. Concurrent edits pause record changes for desktop confirmation.
+- **Keep original images:** transfer missing originals in checked chunks, without recompression.
 
-Verified with a Windows client and Android emulator transferring approximately 138 MiB of originals in each direction, then repeating without retransmitting images. This is not a wireless speed benchmark. Physical Redmi K70 / HyperOS hotspot and network switching remain unverified. See the [release notes](docs/releases/0.0.10.md) for compatibility and limits.
+Older versions need one manual in-place upgrade to gain the updater. Package verification, Windows recovery after copy failures, and Android emulator upgrade data retention have been tested. **The reported physical Bluetooth error 10022 remains unresolved.** OTA uses each device's internet connection independently of Bluetooth sync. See the [release notes](docs/releases/0.0.13.md).
 
 <details>
 <summary><b>See the desktop calendar, tasks and expanded Android month</b></summary>
@@ -48,11 +48,17 @@ Verified with a Windows client and Android emulator transferring approximately 1
 
 ## Your first sync
 
-1. Pair the phone and PC in system Bluetooth settings.
-2. On Android, open Schedule → Sync, select the PC, grant required permissions and tap “Wait for Windows.”
-3. On Windows, open Bluetooth sync at the top right, select the phone and start two-way sync. Keep the phone's sync page open.
+Windows **0.0.13** / Android **1.1.12** add in-app updates. Click the download icon in the Windows toolbar, or open **Sync → Software updates** on Android, to check the latest stable GitHub release, read its notes and download an update. Downloads are checked before installation. Android also verifies the app signature and requires system installation confirmation. Older versions need one manual in-place upgrade to gain this entry. See the [release notes](docs/releases/0.0.13.md).
 
-The temporary hotspot does not share internet access. The PC may temporarily switch Wi-Fi and attempts to restore its previous connection afterward. You initiate each sync; no cloud account is involved.
+Both apps support background automatic sync. Select and enable the paired device once on each side. Sync defaults to every **two hours**, runs once after reconnecting, and sends saved changes after an idle period. Windows offers 1/2/4/8-hour intervals. The phone's sync page can be closed; its background notification offers Pause. Unsaved drafts and pending conflicts defer synchronization. Keep Windows Schedule running, including in the tray. System background restrictions may delay execution.
+
+Automatic sync uses existing connections without starting a phone hotspot or switching Windows Wi-Fi. Manual sync retains hotspot acceleration. Originals still transfer incrementally in batches. After upgrading, select the PC on Android and start the background listener, granting Nearby devices and notification permissions. Allow Schedule background autostart if HyperOS restricts it.
+
+1. Pair the phone and PC in system Bluetooth settings.
+2. On Android, open Schedule → Sync, select the PC and enable background sync. Grant required permissions and optionally approve “Allow background reconnection” once.
+3. On Windows, open Bluetooth sync at the top right, select the phone and enable automatic sync or start a manual transfer. The phone's sync page can be closed.
+
+The temporary hotspot does not share internet access. The PC may temporarily switch Wi-Fi and attempts to restore its previous connection afterward. Manual transfers are initiated by you; enabled automatic transfers run in the background. No cloud account is involved.
 
 <details>
 <summary><b>Everyday controls and shortcuts</b></summary>
@@ -68,7 +74,7 @@ The temporary hotspot does not share internet access. The PC may temporarily swi
 | Structure your notes | **Tab** indents the current line; **Shift+Tab** outdents it. Select multiple lines to adjust them together. Undo and redo are supported |
 | Edit in place | Double-click idea text in a project or the unbound overview to edit it where it is, with automatic saving. Click “完成编辑” (Finish editing) or press Esc to finish. The original date and project bindings stay intact |
 | View original images | Click an image in a record or project to preview it inside the app. The image fits the window initially; use the wheel to zoom and drag to pan. Click outside the image or press Esc to close. Received image bytes are preserved without resizing or recompression; the per-image limit is 12 MB |
-| Two-way Bluetooth sync | Pair the phone and PC in system settings. In Schedule on Android, select this PC and tap “Wait for Windows.” In the desktop app, click “蓝牙同步” (Bluetooth sync) at the top right, select the paired phone, then “双向同步” (Two-way sync). Use the existing Schedule shortcut; no separate executable is needed |
+| Two-way Bluetooth sync | Pair in system settings, select each device once in Schedule, and enable automatic sync. Android offers one-time background reconnection approval; its sync page can be closed. Manual sync remains available on Windows. Use the existing Schedule shortcut |
 | Choose projects | New ideas start unbound. Inside an idea, the picker immediately adds or removes bindings. Outside an idea, a manual selection applies only to the next idea and clears when changing dates, views or restarting. Writing in a project overview still binds to that project |
 | Edit a project | Right-click its sidebar name to change the name or linked local folder. F2 or Shift+F10 works when the project is focused. Existing idea bindings are preserved |
 | Project counts and order | Parentheses show each project's total ideas. Projects sort by unfinished idea count, keeping their original order on ties. Ordinary notes count as unfinished ideas without becoming todos |
@@ -95,7 +101,7 @@ Pasting multiline text or equations keeps them in the current idea, including bl
 
 New ideas start as ordinary notes. Mark one as a task to add importance or a linked schedule. Events can link to ideas from any date and follow that idea's completion; Todo shows one item for the idea and its linked events. Completing it from the calendar, project or event synchronizes the other views and cancels linked reminders. Converting it back to a note clears its deadline and detaches events, retaining them as standalone events. Existing checked ideas migrate to completed tasks; existing task flags and deadlines remain todos.
 
-Text styles persist with each record and appear in project overviews and expanded day views. Copying within the app preserves styles, while plain-text copying retains the source text. These features are included in the v0.0.10 Windows download.
+Text styles persist with each record and appear in project overviews and expanded day views. Copying within the app preserves styles, while plain-text copying retains the source text. These features are included in the v0.0.13 Windows download.
 
 The desktop app opens today's date on startup. Midnight, tray restoration, and wake-up refresh the current day. An idle view of today follows the new day; active editing and historical-date browsing stay on their selected date. The Today button always reads the current system date.
 
@@ -108,7 +114,7 @@ Moving the window between monitors with different scaling settings redraws text 
 
 Updated apps merge notes, ideas, projects, original images and all events in both directions, including previously phone-only events. Stable IDs and a shared baseline distinguish updates, deletions and concurrent edits. Disconnects can be retried without duplicate records. Conflicts pause record changes for explicit desktop review before another sync. Linked and legacy events remain protected. Original image bytes travel in checked chunks without resizing or recompression. With both apps updated, originals transfer separately in 192 KiB chunks without a fixed aggregate quota. Metadata is limited to 100 MiB and each synced original to 64 MiB, subject to available disk space. Legacy peers retain the old whole-payload limits.
 
-System pairing alone does not start a transfer: the phone must be waiting and the PC starts synchronization. Older phones retain the shared-event protocol and show its limited scope. Local folder paths and Android document grants stay on their device. The updated Android app supports complete ZIP backup/restore including original images, with metadata recovery copies before synchronization and immutable original files retained separately. Do not uninstall or clear phone data. Android manual ZIP backups retain their existing 256 MiB total limit; sync recovery uses a separate metadata path.
+After system pairing, enable automatic sync on both devices for background connection attempts. For manual sync, start the phone listener and initiate the transfer on Windows. Older phones retain the shared-event protocol and show its limited scope. Local folder paths and Android document grants stay on their device. The updated Android app supports complete ZIP backup/restore including original images, with metadata recovery copies before synchronization and immutable original files retained separately. Do not uninstall or clear phone data. Android manual ZIP backups retain their existing 256 MiB total limit; sync recovery uses a separate metadata path.
 
 Data is stored in `%USERPROFILE%\.schedule\journal.json`, including journal text, ideas, project bindings, image references, events, and floating-window position. New and received originals live in the adjacent `images` directory; older embedded originals remain compatible. Linked files remain at their original paths. Saves use a temporary file and atomic replacement; `.bak` holds the preceding version.
 
@@ -152,7 +158,7 @@ The first build downloads pinned NuGet dependencies and uses the .NET Framework 
 py -3 scripts/package_release.py
 ```
 
-The output is `dist/Schedule-0.0.10-windows-x64.zip`. It includes the app, both READMEs, the home screenshot, licenses, and the notes for this release.
+The output is `dist/Schedule-0.0.13-windows-x64.zip`. It includes the app, both READMEs, the home screenshot, licenses, and the notes for this release.
 
 Development tests also require Node.js and npm:
 
@@ -178,7 +184,7 @@ npm run test:math-svg
 py -3 scripts/test_native_models.py
 ```
 
-Native tests require a desktop session and WebView2, and set an isolated data directory before process startup. CI runs model tests and a Windows build. A version tag prepares a draft release using the [versioned notes](docs/releases/0.0.10.md). The same-signed Android APK and combined bundle are attached before publication.
+Native tests require a desktop session and WebView2, and set an isolated data directory before process startup. CI runs model tests and a Windows build. A version tag prepares a draft release using the [versioned notes](docs/releases/0.0.13.md). The same-signed Android APK and combined bundle are attached before publication.
 
 Each document load reads the current file before enabling editing. Failed reads block editing, stale saves reject external file changes, and unchanged saves preserve the previous backup.
 
@@ -190,4 +196,4 @@ Windows currently has a Chinese interface; Android supports Chinese and English.
 
 Made by [**ARCLIGHT**](https://arc0127.github.io/) and released under the [MIT License](LICENSE). Report problems through [Issues](https://github.com/ARC0127/Schedule/issues).
 
-[Architecture and data model (Chinese)](docs/architecture.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [v0.0.10 release notes](docs/releases/0.0.10.md)
+[Architecture and data model (Chinese)](docs/architecture.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [v0.0.13 release notes](docs/releases/0.0.13.md)

@@ -11,6 +11,8 @@ const fixture={WidgetState:{privateContent:{projects:[{id:'p',name:'保留项目
   ['2034-03-11']:{Title:'旧版日程',Time:'12:30',At:new Date('2034-03-11T12:30:00').toISOString(),RemindMinutes:-1,Done:false,Important:false}
 }};
 fs.writeFileSync(file,JSON.stringify(fixture));
+// Manual-protocol regressions deliberately disable the independent automatic scheduler.
+fs.writeFileSync(path.join(profile,'auto-sync.json'),JSON.stringify({enabled:false,peer:'',hours:2}));
 let app,browser,page,server,exchangeHandler;
 const errors=[],cases=[],pause=ms=>new Promise(r=>setTimeout(r,ms));
 const env={...process.env,SCHEDULE_TEST_DATA:profile,SCHEDULE_TEST_BLUETOOTH_PIPE:pipe};

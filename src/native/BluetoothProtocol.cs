@@ -54,7 +54,7 @@ namespace ScheduleSync
             for (int used = 0; used < size;)
             {
                 int count = stream.Read(bytes, used, size - used);
-                if (count == 0) throw new EndOfStreamException("同步连接已断开。请保持手机同步页面打开后重试。");
+                if (count == 0) throw new EndOfStreamException("手机已关闭同步连接。");
                 used += count;
             }
             return bytes;

@@ -137,11 +137,12 @@ namespace ScheduleSync
 
     internal static class SyncSession
     {
-        internal static string Run(Stream bluetooth, DesktopJournal desktop,Func<Map,WifiTransferConnection> wifi=null,Action<string> progress=null)
+        internal static string Run(Stream bluetooth, DesktopJournal desktop,Func<Map,WifiTransferConnection> wifi=null,Action<string> progress=null,bool automatic=false)
         {
             // Validate the data source before any mutations, so an invalid snapshot can never be treated as an empty journal.
             desktop.Snapshot();
             var hello = Wire.Frame("hello"); hello["source"] = desktop.Source;hello["journalSync"]=2;hello["assetSync"]=2;
+            hello["automatic"]=automatic;
             if(wifi!=null)hello["wifiSync"]=1;
             Wire.Send(bluetooth, hello);
             var incoming=Wire.Receive(bluetooth,null);
@@ -150,11 +151,11 @@ namespace ScheduleSync
                     bool available=Wire.Boolean(incoming,"available");WifiTransferConnection connection=null;
                     if(available)try{if(progress!=null)progress(attempt==0?"正在检查局域网通道…":"正在连接手机临时 Wi-Fi…");connection=wifi(incoming);}
                     catch(Exception error){if(progress!=null)progress("Wi-Fi 未连接："+error.Message);}
-                    bool direct=connection==null&&available&&attempt==0;
+                    bool direct=connection==null&&available&&attempt==0&&!automatic;
                     var choice=Wire.Frame("wifi-result");choice["use"]=connection!=null;choice["direct"]=direct;
                     if(connection!=null)using(connection) {
                         Wire.Send(bluetooth,choice);if(progress!=null)progress("已连接 Wi-Fi，正在同步原图与记录…");
-                        return "Wi-Fi · "+Run(connection.Stream,desktop,null,progress);
+                        return "Wi-Fi · "+Run(connection.Stream,desktop,null,progress,automatic);
                     }
                     Wire.Send(bluetooth,choice);
                     if(!direct)break;

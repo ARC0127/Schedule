@@ -1458,7 +1458,51 @@
   });
   $("#j-data-dialog").addEventListener("cancel",e=>{if(dataBusy)e.preventDefault();});
   const bluetoothDialog = $("#j-bluetooth-dialog"), bluetoothDevice = $("#j-bluetooth-device"), bluetoothStatus = $("#j-bluetooth-status");
+  let updateBusy=false,updateReady=false;
+  async function checkSoftwareUpdate(){
+    if(updateBusy||!window.journalNative)return;
+    updateBusy=true;updateReady=false;$('#j-update-check').disabled=true;$('#j-update-install').hidden=true;$('#j-update-notes-wrap').hidden=true;$('#j-update-status').textContent='正在检查更新…';
+    try {
+      const result=await window.journalNative.call('checkUpdate');
+      $('#j-update-status').textContent=result.available?`当前 ${result.current} · 可更新至 ${result.version}`:`当前 ${result.current}，暂无更高版本。`;
+      $('#j-update-install').hidden=!result.available;$('#j-update-install').textContent='下载更新';
+      $('#j-update-notes-wrap').hidden=!result.available;$('#j-update-notes').textContent=result.notes;
+    }catch(error){$('#j-update-status').textContent='检查失败：'+error.message;}
+    finally{updateBusy=false;$('#j-update-check').disabled=false;}
+  }
+  $('#j-update-open').addEventListener('click',()=>{$('#j-update-dialog').showModal();checkSoftwareUpdate();});
+  $('#j-update-close').addEventListener('click',()=>$('#j-update-dialog').close());
+  $('#j-update-check').addEventListener('click',checkSoftwareUpdate);
+  $('#j-update-install').addEventListener('click',async()=>{
+    if(updateBusy)return;updateBusy=true;$('#j-update-check').disabled=true;$('#j-update-install').disabled=true;
+    try {
+      if(updateReady){await window.journalFlush();$('#j-update-dialog').close();try{await window.journalNative.call('installUpdate');}catch(error){$('#j-update-dialog').showModal();throw error;}}
+      else {$('#j-update-status').textContent='正在下载并校验…';await window.journalNative.call('downloadUpdate');updateReady=true;$('#j-update-status').textContent='更新已就绪，重启后安装。';$('#j-update-install').textContent='重启并安装';}
+    }catch(error){$('#j-update-status').textContent=error.message;}
+    finally{updateBusy=false;$('#j-update-check').disabled=false;$('#j-update-install').disabled=false;}
+  });
+  window.addEventListener('journal:update-progress',event=>{$('#j-update-status').textContent=`正在下载 ${event.detail}%`;});
   let bluetoothBusy = false, bluetoothListing = false, syncReview = null;
+  let autoSyncConfig=null;
+  function showSyncError(message){
+    $('#j-sync-error-details').hidden=!message;
+    $('#j-sync-error-text').textContent=message||'';
+    if(!message)$('#j-sync-error-details').open=false;
+  }
+  function showAutoSync(config){
+    const previousSuccess=autoSyncConfig?.lastSuccessUtc||autoSyncConfig?.lastSync;
+    autoSyncConfig=config;$('#j-auto-sync').checked=config.enabled;$('#j-auto-sync-hours').value=String(config.hours);
+    $('#j-auto-sync-status').textContent=config.enabled?(config.message||'等待自动连接'):'自动同步已暂停';
+    $('#j-auto-sync-last').textContent=config.lastSync?`上次成功同步：${config.lastSync}`:'尚未成功同步';
+    if(!bluetoothBusy&&config.error)showSyncError(config.error);
+    if(!bluetoothBusy&&config.message==='已自动同步'&&(config.lastSuccessUtc||config.lastSync)!==previousSuccess){showSyncError('');bluetoothStatus.textContent='';}
+  }
+  window.addEventListener('journal:auto-sync',event=>{showAutoSync(event.detail);loadSyncReview().catch(()=>{});});
+  async function saveAutoSync(){
+    try{showAutoSync(await window.journalNative.call('setAutoSync',{peer:bluetoothDevice.value,enabled:$('#j-auto-sync').checked,hours:Number($('#j-auto-sync-hours').value)}));}
+    catch(error){$('#j-auto-sync-status').textContent=error.message;}
+  }
+  $('#j-auto-sync').addEventListener('change',saveAutoSync);$('#j-auto-sync-hours').addEventListener('change',saveAutoSync);
   window.addEventListener("journal:sync-progress",event=>{if(bluetoothBusy)bluetoothStatus.textContent=event.detail;});
   async function loadSyncReview() {
     syncReview = await window.journalNative.call("loadSyncReview");
@@ -1537,7 +1581,8 @@
       const devices = await window.journalNative.call("bluetoothDevices");
       bluetoothDevice.replaceChildren(new Option("选择手机", ""));
       for (const device of devices) bluetoothDevice.add(new Option(`${device.name} · ${device.address}`, device.address));
-      if (devices.some(device => device.address === previous)) bluetoothDevice.value = previous;
+      const selected=previous||autoSyncConfig?.peer;
+      if (devices.some(device => device.address === selected)) bluetoothDevice.value = selected;
       bluetoothStatus.textContent = devices.length ? "选择手机后同步。" : "没有已配对的设备，请先在系统蓝牙设置中配对。";
     } catch (error) {
       bluetoothDevice.replaceChildren(new Option("设备列表读取失败", ""));
@@ -1545,14 +1590,15 @@
     } finally {bluetoothListing = false; updateBluetoothControls();}
   }
   $("#j-bluetooth-open").hidden = !window.journalNative;
-  $("#j-bluetooth-open").addEventListener("click", () => {
+  $("#j-bluetooth-open").addEventListener("click", async () => {
     bluetoothDialog.showModal();
     loadSyncReview().catch(error=>{bluetoothStatus.textContent=error.message;});
+    try{showAutoSync(await window.journalNative.call('autoSyncSettings'));}catch(error){$('#j-auto-sync-status').textContent=error.message;}
     if (!bluetoothBusy) refreshBluetoothDevices();
   });
   $("#j-bluetooth-close").addEventListener("click", () => bluetoothDialog.close());
   $("#j-bluetooth-refresh").addEventListener("click", refreshBluetoothDevices);
-  bluetoothDevice.addEventListener("change", updateBluetoothControls);
+  bluetoothDevice.addEventListener("change", ()=>{updateBluetoothControls();saveAutoSync();});
   $("#j-bluetooth-settings").addEventListener("click", () => {
     window.journalNative.call("bluetoothSettings").catch(error => {bluetoothStatus.textContent = error.message;});
   });
@@ -1560,12 +1606,18 @@
     if (bluetoothBusy || bluetoothListing || !bluetoothDevice.value) return;
     const address = bluetoothDevice.value;
     bluetoothBusy = true; updateBluetoothControls();
-    bluetoothStatus.textContent = "正在连接并同步，请保持手机停留在等待连接页面…";
+    showSyncError('');bluetoothStatus.textContent = "正在连接手机并同步…";
     try {
       const result = await window.journalNative.call("bluetoothSync", {address,wifi:$("#j-sync-wifi").checked});
       bluetoothStatus.textContent = result.message;
     } catch (error) {
-      bluetoothStatus.textContent = `同步未完成，请确认手机仍在等待连接后重试。${error.message}`;
+      const detail=error.message||String(error);
+      const connection=/蓝牙连接未能建立|连接已断开|关闭同步连接|无效的参数|invalid argument|broken pipe|connection.*(closed|reset)/i.test(detail);
+      bluetoothStatus.textContent=connection
+        ? '未能连接手机。请确认两端蓝牙已开启，手机 Schedule 已启用后台同步。'
+        : /正在检查|正在同步/.test(detail)?'已有连接检查或同步正在进行，请稍候。':'本次同步未完成，请查看错误详情。';
+      if(autoSyncConfig?.enabled)bluetoothStatus.textContent+=' 电脑会自动重试，无需重新配对或一直打开手机页面。';
+      showSyncError(detail);
     } finally {
       bluetoothBusy = false;updateBluetoothControls();
       await loadSyncReview().catch(error=>{bluetoothStatus.textContent=error.message;});
@@ -3788,6 +3840,7 @@
     }
     $(".j-preview").hidden = true;
     $("[data-action=dock]").hidden = false;
+    $("#j-update-open").hidden = false;
   }
   render();
   if (window.journalNative) await window.journalNative.call("uiReady");

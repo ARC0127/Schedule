@@ -22,6 +22,10 @@ internal class JournalWindow : Form
     bool ready, closing, minimizing;
     bool backgroundLaunch, initializationStarted, transitionPending;
     bool bluetoothRunning;
+    bool autoChecking;
+    readonly System.Windows.Forms.Timer autoTimer=new System.Windows.Forms.Timer{Interval=30000};
+    readonly AutoSyncSettings autoSettings=new AutoSyncSettings();
+    AutoSyncPolicy autoPolicy=new AutoSyncPolicy();
     string initialMode;
     LocalApi api;
     readonly Dictionary<string,TaskCompletionSource<string>> apiReplies=new Dictionary<string,TaskCompletionSource<string>>();
@@ -55,6 +59,8 @@ internal class JournalWindow : Form
             RequestTransition("dock");
         };
         Shown += async delegate { if(!initializationStarted){initializationStarted=true;await Init();} };
+        autoTimer.Tick+=async delegate{await AutoSyncTick();};
+        FormClosed+=delegate{autoTimer.Dispose();};
         FormClosing += delegate(object sender, FormClosingEventArgs e) {
             if (closing) return;
             if(e.CloseReason==CloseReason.WindowsShutDown){Program.Save();return;}
@@ -122,6 +128,7 @@ internal class JournalWindow : Form
             } else if(op=="uiReady") {
                 ready=true;backgroundLaunch=false;tray.Visible=true;RefreshTrayMenu();activationTimer.Start();
                 if(api==null)api=new LocalApi(this);
+                try{autoSettings.Load();autoPolicy.LastSuccess=autoSettings.LastSuccess;autoTimer.Start();}catch(Exception error){autoSettings.Message=error.Message;}
                 if(initialMode=="dock"&&Program.ActivationDate==null)ShowDock();else if(initialMode=="tray"&&Program.ActivationDate==null)HideToTray();else OpenActivation();
                 initialMode="main";
                 result=new {ready=true};
@@ -142,6 +149,18 @@ internal class JournalWindow : Form
             } else if(op=="saveSchedule") result=WindowsReminders.SetSchedule((Dictionary<string,object>)req["payload"]);
             else if(op=="bluetoothDevices") result=await Task.Run(() => BluetoothTransport.PairedDevices().OrderBy(device=>device.Name).Select(device=>new {address=device.Address.ToString("X12"),name=device.Name}).ToArray());
             else if(op=="bluetoothSync") result=await SyncBluetooth((Dictionary<string,object>)req["payload"]);
+            else if(op=="checkUpdate")result=await CheckUpdate();
+            else if(op=="downloadUpdate")result=await DownloadUpdate();
+            else if(op=="installUpdate")result=await InstallUpdate();
+            else if(op=="autoSyncSettings") result=autoSettings.View();
+            else if(op=="setAutoSync") {
+                var settings=(Dictionary<string,object>)req["payload"];
+                if((bluetoothRunning||autoChecking)&&Convert.ToBoolean(settings["enabled"]))throw new InvalidOperationException("正在检查连接，请稍后修改。仍可暂停自动同步。");
+                string peer=Convert.ToString(settings["peer"]);
+                if(Convert.ToBoolean(settings["enabled"])&&peer!=""&&!BluetoothTransport.PairedDevices().Any(d=>d.Address.ToString("X12")==peer))throw new ArgumentException("请选择已配对手机。");
+                autoSettings.Apply(settings);autoSettings.Save();autoPolicy=new AutoSyncPolicy();result=autoSettings.View();
+                BeginInvoke(new Action(async delegate{await AutoSyncTick();}));
+            }
             else if(op=="storeOriginal") result=new ScheduleSync.SyncAssets(Path.Combine(Program.DataDir,"images")).StoreDataUrl(Convert.ToString(((Dictionary<string,object>)req["payload"])["src"]));
             else if(op=="prepareSyncAssets") result=new ScheduleSync.SyncAssets(Path.Combine(Program.DataDir,"images")).Prepare((Dictionary<string,object>)req["payload"]);
             else if(op=="legacyAssetBytes") {
@@ -219,9 +238,54 @@ internal class JournalWindow : Form
         }));
         return ScheduleSync.Wire.Object(ScheduleSync.Wire.Json.DeserializeObject(reply.Task.GetAwaiter().GetResult()));
     }
-    async Task<object> SyncBluetooth(Dictionary<string,object> payload)
+    ReleaseUpdate updateCandidate;
+    UpdatePlan updatePlan;
+    string updateFolder;
+    bool updateBusy;
+    async Task<object> CheckUpdate() {
+        if(updateBusy)throw new InvalidOperationException("正在准备更新，请稍候。");
+        updateBusy=true;
+        try {
+            updatePlan=null;updateCandidate=null;
+            var current=System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            updateCandidate=await Task.Run(()=>ReleaseUpdate.Check(current));
+            return new {current=current.ToString(3),available=updateCandidate!=null,version=updateCandidate==null?"":updateCandidate.Version,notes=updateCandidate==null?"":updateCandidate.Notes};
+        }finally{updateBusy=false;}
+    }
+    async Task<object> DownloadUpdate() {
+        if(updateBusy||updateCandidate==null)throw new InvalidOperationException("请先检查更新。");
+        updateBusy=true;
+        try {
+            updateFolder=Path.Combine(Program.DataDir,"updates",Guid.NewGuid().ToString("N"));Directory.CreateDirectory(updateFolder);
+            string app=Path.GetFullPath(Program.AppDir).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
+            if(Path.GetFullPath(Program.DataDir).StartsWith(app,StringComparison.OrdinalIgnoreCase))throw new IOException("程序目录包含数据目录，请将程序移到独立目录后更新。");
+            updatePlan=await Task.Run(()=>{
+                string archive=Path.Combine(updateFolder,"release.zip");updateCandidate.Download(archive,percent=>BeginInvoke(new Action(async delegate{await web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('journal:update-progress',{detail:"+percent+"}))");})));
+                return UpdateInstall.Extract(archive,Path.Combine(updateFolder,"payload"),Program.AppDir,updateCandidate.Version);
+            });
+            return new{ready=true};
+        }finally{updateBusy=false;}
+    }
+    async Task<object> InstallUpdate() {
+        if(updateBusy||updatePlan==null)throw new InvalidOperationException("请先下载并校验更新。");
+        if(bluetoothRunning||autoChecking)throw new InvalidOperationException("正在同步，请同步结束后再安装。");
+        updateBusy=true;
+        try {
+            var saved=Program.Json.Deserialize<Dictionary<string,object>>(await ExecuteApi(Program.Json.Serialize(new{op="get_day",date=DateTime.Now.ToString("yyyy-MM-dd")})));
+            if(!Convert.ToBoolean(saved["ok"]))throw new IOException(Convert.ToString(saved["error"]));
+            Program.Save();JournalArchive.Snapshot("before-update");
+            var process=System.Diagnostics.Process.GetCurrentProcess();updatePlan.ProcessId=process.Id;updatePlan.ProcessStarted=process.StartTime.ToUniversalTime().Ticks;
+            string helper=Path.Combine(updateFolder,"Schedule.Update.exe");File.Copy(Path.Combine(Program.AppDir,"Schedule.Update.exe"),helper,true);
+            File.WriteAllText(Path.Combine(updateFolder,"plan.json"),Program.Json.Serialize(updatePlan));
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(helper){UseShellExecute=true,WorkingDirectory=updateFolder});
+            closing=true;BeginInvoke(new Action(Close));return new{installing=true};
+        }catch{updateBusy=false;throw;}
+    }
+    async Task<object> SyncBluetooth(Dictionary<string,object> payload,bool automatic=false,Stream connected=null)
     {
+        if(updateBusy)throw new InvalidOperationException("正在准备更新，请稍后同步。");
         if(bluetoothRunning)throw new InvalidOperationException("正在同步，请等待本次同步结束。");
+        if(!automatic&&autoChecking)throw new InvalidOperationException("正在检查或同步连接，请稍候；自动同步会继续处理。");
         object value;ulong address;
         if(payload==null||!payload.TryGetValue("address",out value)||!(value is string)||
            !System.Text.RegularExpressions.Regex.IsMatch((string)value,@"\A[0-9a-fA-F]{12}\z")||
@@ -240,13 +304,55 @@ internal class JournalWindow : Form
                 await web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('journal:sync-progress',{detail:"+Program.Json.Serialize(progressText)+"}))");
             }));
             string message=await Task.Run(() => {
+                if(connected!=null)return ScheduleSync.SyncSession.Run(connected,journal,wifi?(Func<Dictionary<string,object>,ScheduleSync.WifiTransferConnection>)(offer=>ScheduleSync.WifiTransferConnection.Open(offer)):null,report,automatic);
                 using(var stream=BluetoothTransport.Open(address))
-                    return ScheduleSync.SyncSession.Run(stream,journal,wifi?(Func<Dictionary<string,object>,ScheduleSync.WifiTransferConnection>)(offer=>ScheduleSync.WifiTransferConnection.Open(offer)):null,report);
+                    return ScheduleSync.SyncSession.Run(stream,journal,wifi?(Func<Dictionary<string,object>,ScheduleSync.WifiTransferConnection>)(offer=>ScheduleSync.WifiTransferConnection.Open(offer)):null,report,automatic);
             });
             if(!String.IsNullOrEmpty(journal.CompletedReviewId))JournalSyncReview.Complete(journal.CompletedReviewId);
             return new {message=message};
         } finally {bluetoothRunning=false;}
     }
+    Dictionary<string,object> ProbePhone(ulong address) {
+        using(var probe=new BluetoothTransport.ProbeConnection(address,autoSettings.Hours))return probe.Status;
+    }
+    async Task AutoSyncTick() {
+        if(!ready||closing||transitionPending||updateBusy||bluetoothRunning||autoChecking||!autoSettings.Enabled||autoSettings.Peer==""||DateTime.UtcNow<autoPolicy.RetryAfter)return;
+        autoChecking=true;
+        try {
+            var review=JournalSyncReview.Load();
+            if(review!=null&&!Convert.ToBoolean(review["approved"])){autoSettings.Message="有冲突待确认，自动同步已暂停";return;}
+            ulong peer=Convert.ToUInt64(autoSettings.Peer,16);Dictionary<string,object> status;
+            BluetoothTransport.ProbeConnection probe;
+            try {probe=await Task.Run(()=>new BluetoothTransport.ProbeConnection(peer,autoSettings.Hours));}
+            catch(Exception error){autoPolicy.Failure(DateTime.UtcNow,true);autoSettings.Message="暂未连接到手机，将自动重试";autoSettings.Error=error.Message;return;}
+            using(probe) {
+            status=probe.Status;
+            autoSettings.Error="";
+            if(!autoSettings.Enabled)return;
+            if(!ScheduleSync.Wire.Boolean(status,"enabled")){autoSettings.Message="手机已暂停自动同步";return;}
+            var changed=DateTimeOffset.FromUnixTimeMilliseconds(Convert.ToInt64(status["changed"])).UtcDateTime;
+            var localChanged=File.GetLastWriteTimeUtc(Program.StateFile);if(localChanged>changed)changed=localChanged;
+            string revision=Convert.ToString(status["revision"])+"|"+localChanged.Ticks;
+            int hours=autoSettings.Hours;
+            bool due=autoPolicy.Due(DateTime.UtcNow,revision,changed,hours);autoPolicy.Reachable=true;
+            if(!due)return;
+            autoSettings.Message="正在自动同步…";await PublishAutoStatus();
+            var connected=await Task.Run(()=>probe.Continue());
+            await SyncBluetooth(new Dictionary<string,object>{{"address",autoSettings.Peer},{"wifi",true}},true,connected);
+            }
+            review=JournalSyncReview.Load();
+            if(review!=null){autoSettings.Message="有冲突待确认，自动同步已暂停";return;}
+            // Import redraws the editor and can queue a projection save. Settle it
+            // before recording the baseline, otherwise that save looks like a new edit.
+            var settled=Program.Json.Deserialize<Dictionary<string,object>>(await ExecuteApi(Program.Json.Serialize(new{op="get_day",date=DateTime.Now.ToString("yyyy-MM-dd")})));
+            if(!Convert.ToBoolean(settled["ok"]))throw new InvalidOperationException(Convert.ToString(settled["error"]));
+            status=await Task.Run(()=>ProbePhone(peer));
+            string baseline=Convert.ToString(status["revision"])+"|"+File.GetLastWriteTimeUtc(Program.StateFile).Ticks;
+            autoPolicy.Success(DateTime.UtcNow,baseline);autoSettings.LastSuccess=autoPolicy.LastSuccess;autoSettings.Message="已自动同步";autoSettings.Save();
+        }catch(Exception error){autoPolicy.Failure(DateTime.UtcNow,false);autoSettings.Message="本次同步未完成，将稍后重试";autoSettings.Error=error.Message;}
+        finally{autoChecking=false;if(!closing&&!IsDisposed)BeginInvoke(new Action(async delegate{await PublishAutoStatus();}));}
+    }
+    async Task PublishAutoStatus(){if(!closing&&!IsDisposed&&web.CoreWebView2!=null)await web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('journal:auto-sync',{detail:"+Program.Json.Serialize(autoSettings.View())+"}))");}
     internal async void ToggleDockIdea(string date,string id)
     {
         await web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('journal:toggle-idea',{detail:"+Program.Json.Serialize(new {date=date,id=id})+"}))");
