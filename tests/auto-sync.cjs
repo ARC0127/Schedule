@@ -83,7 +83,7 @@ async function until(test,timeout=70000){const end=Date.now()+timeout;while(Date
 (async()=>{try{
   server=net.createServer(handle);await new Promise(r=>server.listen(pipePath,r));await launch();
   const defaults=await page.evaluate(()=>window.journalNative.call('autoSyncSettings'));
-  assert.equal(defaults.hours,2);
+  assert.equal(defaults.hours,1);
   await page.evaluate(()=>window.journalNative.call('setAutoSync',{peer:'000000000001',enabled:true,hours:2}));
   await until(()=>probes===1);
   const overlap=await page.evaluate(async()=>{try{await window.journalNative.call('bluetoothSync',{address:'000000000001',wifi:true});return '';}catch(e){return e.message;}});

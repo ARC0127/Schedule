@@ -140,7 +140,7 @@ final class BluetoothSync {
     static JSONObject handshake(android.content.Context context,java.io.InputStream in,java.io.OutputStream out)throws Exception {
         JSONObject hello=Protocol.read(in,"hello");
         if(hello.optBoolean("autoProbe")) {
-            int hours=hello.optInt("hours",2);
+            int hours=hello.optInt("hours",SyncService.hours(context));
             if(hours==1||hours==2||hours==4||hours==8)SyncService.preferences(context).edit().putInt("hours",hours).apply();
             boolean keep=hello.optBoolean("continueSync");
             Protocol.write(out,SyncService.probe(context).put("continueSync",keep));

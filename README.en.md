@@ -3,7 +3,7 @@
 <p align="center"><b>A little space for a clearer day.</b></p>
 <p align="center">Windows × Android · Calendars, ideas and projects · Local storage, two-way sync</p>
 <p align="center"><a href="README.md">简体中文</a> · <b>English</b></p>
-<p align="center"><a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.13">Download</a> · <a href="docs/releases/0.0.13.md">Release notes</a> · <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a></p>
+<p align="center"><a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.14">Download</a> · <a href="docs/releases/0.0.14.md">Release notes</a> · <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a></p>
 
 ![Schedule: organize on your desktop, capture ideas on your phone](docs/images/hero.png)
 
@@ -11,9 +11,9 @@
 
 ## Choose your device
 
-| Windows 0.0.13 | Android 1.1.12 | Desktop + phone |
+| Windows 0.0.14 | Android 1.1.13 | Desktop + phone |
 | :--- | :--- | :--- |
-| [**Download Windows ZIP**](https://github.com/ARC0127/Schedule/releases/download/v0.0.13/Schedule-0.0.13-windows-x64.zip) | [**Download Android APK**](https://github.com/ARC0127/Schedule/releases/download/v0.0.13/Schedule.Android-1.1.12.apk) | [**Download both**](https://github.com/ARC0127/Schedule/releases/download/v0.0.13/Schedule-Windows-0.0.13-Android-1.1.12.zip) |
+| [**Download Windows ZIP**](https://github.com/ARC0127/Schedule/releases/download/v0.0.14/Schedule-0.0.14-windows-x64.zip) | [**Download Android APK**](https://github.com/ARC0127/Schedule/releases/download/v0.0.14/Schedule.Android-1.1.13.apk) | [**Download both**](https://github.com/ARC0127/Schedule/releases/download/v0.0.14/Schedule-Windows-0.0.14-Android-1.1.13.zip) |
 | Extract the entire folder and open `Journal.exe` | Install over your existing app to keep its data | Both apps and installation instructions |
 
 Windows requires Windows 10/11 x64, .NET Framework 4.8 and [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/). Android requires 8.0 or later. The Windows executable is unsigned and may show an unknown-publisher prompt. Python and Node.js are not required to use the apps.
@@ -28,14 +28,15 @@ Windows requires Windows 10/11 x64, .NET Framework 4.8 and [WebView2 Runtime](ht
 
 On Windows, connect local folders, drop files, resize your sidebar and editor, and preview today from a floating desktop icon or the tray. Codex and Claude Code share the same local read/write interface.
 
-## New: in-app updates and background sync
+## New: quieter notifications, hourly sync
 
+- **Quieter notifications:** the phone shows a fixed background-service notice. Progress and errors stay on the Sync page. Legacy two-hour settings migrate once to one hour, retaining pairing and paused state.
 - **Update in the app:** read stable GitHub release notes, then download and verify the package. Windows exits and restarts; Android asks for installation confirmation.
-- **Sync every two hours:** select the paired device and enable sync once. Reconnection and saved changes also trigger attempts. Keep Windows in the tray; Android's sync page can be closed.
+- **Sync every hour:** select the paired device and enable sync once. Reconnection and saved changes also trigger attempts. Keep Windows in the tray; Android's sync page can be closed.
 - **Keep conflict review:** independent additions merge automatically. Concurrent edits pause record changes for desktop confirmation.
 - **Keep original images:** transfer missing originals in checked chunks, without recompression.
 
-Older versions need one manual in-place upgrade to gain the updater. Package verification, Windows recovery after copy failures, and Android emulator upgrade data retention have been tested. **The reported physical Bluetooth error 10022 remains unresolved.** OTA uses each device's internet connection independently of Bluetooth sync. See the [release notes](docs/releases/0.0.13.md).
+Older versions need one manual in-place upgrade to gain the updater. Package verification, Windows recovery after copy failures, and Android emulator upgrade data retention have been tested. **The reported physical Bluetooth error 10022 remains unresolved.** OTA uses each device's internet connection independently of Bluetooth sync. See the [release notes](docs/releases/0.0.14.md).
 
 <details>
 <summary><b>See the desktop calendar, tasks and expanded Android month</b></summary>
@@ -48,9 +49,9 @@ Older versions need one manual in-place upgrade to gain the updater. Package ver
 
 ## Your first sync
 
-Windows **0.0.13** / Android **1.1.12** add in-app updates. Click the download icon in the Windows toolbar, or open **Sync → Software updates** on Android, to check the latest stable GitHub release, read its notes and download an update. Downloads are checked before installation. Android also verifies the app signature and requires system installation confirmation. Older versions need one manual in-place upgrade to gain this entry. See the [release notes](docs/releases/0.0.13.md).
+Windows **0.0.14** / Android **1.1.13** add in-app updates. Click the download icon in the Windows toolbar, or open **Sync → Software updates** on Android, to check the latest stable GitHub release, read its notes and download an update. Downloads are checked before installation. Android also verifies the app signature and requires system installation confirmation. Older versions need one manual in-place upgrade to gain this entry. See the [release notes](docs/releases/0.0.14.md).
 
-Both apps support background automatic sync. Select and enable the paired device once on each side. Sync defaults to every **two hours**, runs once after reconnecting, and sends saved changes after an idle period. Windows offers 1/2/4/8-hour intervals. The phone's sync page can be closed; its background notification offers Pause. Unsaved drafts and pending conflicts defer synchronization. Keep Windows Schedule running, including in the tray. System background restrictions may delay execution.
+Both apps support background automatic sync. Select and enable the paired device once on each side. Sync defaults to every **hour**, runs once after reconnecting, and sends saved changes after an idle period. Windows offers 1/2/4/8-hour intervals. The phone's sync page can be closed; its background notification offers Pause. Unsaved drafts and pending conflicts defer synchronization. Keep Windows Schedule running, including in the tray. System background restrictions may delay execution.
 
 Automatic sync uses existing connections without starting a phone hotspot or switching Windows Wi-Fi. Manual sync retains hotspot acceleration. Originals still transfer incrementally in batches. After upgrading, select the PC on Android and start the background listener, granting Nearby devices and notification permissions. Allow Schedule background autostart if HyperOS restricts it.
 
@@ -101,7 +102,7 @@ Pasting multiline text or equations keeps them in the current idea, including bl
 
 New ideas start as ordinary notes. Mark one as a task to add importance or a linked schedule. Events can link to ideas from any date and follow that idea's completion; Todo shows one item for the idea and its linked events. Completing it from the calendar, project or event synchronizes the other views and cancels linked reminders. Converting it back to a note clears its deadline and detaches events, retaining them as standalone events. Existing checked ideas migrate to completed tasks; existing task flags and deadlines remain todos.
 
-Text styles persist with each record and appear in project overviews and expanded day views. Copying within the app preserves styles, while plain-text copying retains the source text. These features are included in the v0.0.13 Windows download.
+Text styles persist with each record and appear in project overviews and expanded day views. Copying within the app preserves styles, while plain-text copying retains the source text. These features are included in the v0.0.14 Windows download.
 
 The desktop app opens today's date on startup. Midnight, tray restoration, and wake-up refresh the current day. An idle view of today follows the new day; active editing and historical-date browsing stay on their selected date. The Today button always reads the current system date.
 
@@ -158,7 +159,7 @@ The first build downloads pinned NuGet dependencies and uses the .NET Framework 
 py -3 scripts/package_release.py
 ```
 
-The output is `dist/Schedule-0.0.13-windows-x64.zip`. It includes the app, both READMEs, the home screenshot, licenses, and the notes for this release.
+The output is `dist/Schedule-0.0.14-windows-x64.zip`. It includes the app, both READMEs, the home screenshot, licenses, and the notes for this release.
 
 Development tests also require Node.js and npm:
 
@@ -184,7 +185,7 @@ npm run test:math-svg
 py -3 scripts/test_native_models.py
 ```
 
-Native tests require a desktop session and WebView2, and set an isolated data directory before process startup. CI runs model tests and a Windows build. A version tag prepares a draft release using the [versioned notes](docs/releases/0.0.13.md). The same-signed Android APK and combined bundle are attached before publication.
+Native tests require a desktop session and WebView2, and set an isolated data directory before process startup. CI runs model tests and a Windows build. A version tag prepares a draft release using the [versioned notes](docs/releases/0.0.14.md). The same-signed Android APK and combined bundle are attached before publication.
 
 Each document load reads the current file before enabling editing. Failed reads block editing, stale saves reject external file changes, and unchanged saves preserve the previous backup.
 
@@ -196,4 +197,4 @@ Windows currently has a Chinese interface; Android supports Chinese and English.
 
 Made by [**ARCLIGHT**](https://arc0127.github.io/) and released under the [MIT License](LICENSE). Report problems through [Issues](https://github.com/ARC0127/Schedule/issues).
 
-[Architecture and data model (Chinese)](docs/architecture.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [v0.0.13 release notes](docs/releases/0.0.13.md)
+[Architecture and data model (Chinese)](docs/architecture.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [v0.0.14 release notes](docs/releases/0.0.14.md)

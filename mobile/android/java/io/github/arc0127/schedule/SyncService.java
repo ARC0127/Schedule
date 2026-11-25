@@ -23,8 +23,16 @@ public final class SyncService extends Service {
     private int generation;
     private Runnable retry;
     JournalAccess access;
-    static SharedPreferences preferences(Context c){return c.getSharedPreferences("automatic-sync",MODE_PRIVATE);}
-    static int hours(Context c){return preferences(c).getInt("hours",2);}
+    static synchronized SharedPreferences preferences(Context c){
+        SharedPreferences p=c.getSharedPreferences("automatic-sync",MODE_PRIVATE);
+        if(!p.contains("intervalVersion")){
+            SharedPreferences.Editor edit=p.edit().putInt("intervalVersion",1);
+            if(p.getInt("hours",1)==2)edit.putInt("hours",1);
+            if(!edit.commit())throw new IllegalStateException("Cannot update automatic sync interval");
+        }
+        return p;
+    }
+    static int hours(Context c){return preferences(c).getInt("hours",1);}
     static JSONObject settings(Context c)throws JSONException {
         SharedPreferences p=preferences(c);
         return new JSONObject().put("enabled",p.getBoolean("enabled",true)).put("peer",p.getString("peer",""))
@@ -48,7 +56,7 @@ public final class SyncService extends Service {
     @Override public void onCreate(){
         super.onCreate();
         getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel("schedule-sync","Schedule 同步 / Sync",NotificationManager.IMPORTANCE_LOW));
-        startForeground(NOTICE,notification("自动同步 · 每 "+hours(this)+" 小时 / Automatic sync"));
+        startForeground(NOTICE,notification());
         IntentFilter filter=new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
         if(Build.VERSION.SDK_INT>=33)registerReceiver(radios,filter,Context.RECEIVER_EXPORTED);else registerReceiver(radios,filter);
         engine=new SyncEngine(this);
@@ -56,11 +64,12 @@ public final class SyncService extends Service {
         catch(Exception error){setStatus("error:"+error.getMessage());stopSelf();return;}
         current=this;
     }
-    private Notification notification(String text){
+    private Notification notification(){
         PendingIntent open=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         PendingIntent stop=PendingIntent.getService(this,0,new Intent(this,SyncService.class).setAction("pause"),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this,"schedule-sync").setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("Schedule")
-            .setContentText(text).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).addAction(new Notification.Action.Builder(null,"暂停 / Pause",stop).build()).build();
+        return new Notification.Builder(this,"schedule-sync").setSmallIcon(android.R.drawable.ic_menu_my_calendar).setContentTitle("Schedule")
+            .setContentText("后台服务已开启 / Background service enabled").setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).setShowWhen(false)
+            .addAction(new Notification.Action.Builder(null,"暂停 / Pause",stop).build()).build();
     }
     @Override public int onStartCommand(Intent intent,int flags,int id){
         if(intent!=null&&"pause".equals(intent.getAction())){disable(this);return START_NOT_STICKY;}
@@ -99,8 +108,6 @@ public final class SyncService extends Service {
         status=value;
         if("synced".equals(value))preferences(this).edit().putLong("lastSync",System.currentTimeMillis()).apply();
         notifyUi("status",value);
-        handler.post(()->{if(!destroyed)getSystemService(NotificationManager.class).notify(NOTICE,notification(
-            value.equals("review")?"请在电脑确认冲突 / Review conflicts on Windows":value.startsWith("retrying:")?"连接中断，等待自动重连 / Waiting to reconnect":value.startsWith("error:")?value.substring(6):"自动同步 · 每 "+hours(this)+" 小时 / Automatic sync"));});
     }
     static JSONObject probe(Context c)throws Exception {
         File dir=c.getFilesDir();SharedPreferences p=preferences(c);

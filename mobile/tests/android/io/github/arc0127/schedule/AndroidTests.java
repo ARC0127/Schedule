@@ -148,7 +148,17 @@ public final class AndroidTests extends Instrumentation {
     private void automaticSync()throws Exception {
         Context context=getTargetContext();upgradeSeed();
         context.getSharedPreferences("automatic-sync",Context.MODE_PRIVATE).edit().clear().commit();
-        check(SyncService.hours(context)==2,"automatic sync defaults to two hours");
+        check(SyncService.hours(context)==1,"automatic sync defaults to one hour");
+        android.content.SharedPreferences prefs=context.getSharedPreferences("automatic-sync",Context.MODE_PRIVATE);
+        prefs.edit().clear().putInt("hours",2).putString("peer","00:11:22:33:44:55").putBoolean("enabled",false).putLong("lastSync",1234).putString("lastError","prior error").commit();
+        check(SyncService.hours(context)==1,"legacy two-hour interval migrates to one hour");
+        JSONObject migrated=SyncService.settings(context);
+        check(!migrated.getBoolean("enabled")&&migrated.getString("peer").equals("00:11:22:33:44:55")&&migrated.getLong("lastSync")==1234&&migrated.getString("lastError").equals("prior error"),"migration preserves pause, pairing and diagnostic history");
+        SyncService.configure(context,"00:11:22:33:44:55",false,2);
+        check(SyncService.hours(context)==2,"explicit two-hour choice after migration is retained");
+        prefs.edit().remove("intervalVersion").putInt("hours",8).commit();
+        check(SyncService.hours(context)==8,"legacy custom interval is retained");
+        prefs.edit().clear().commit();
         Activity activity=startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         WebView web=(WebView)((ViewGroup)((ViewGroup)activity.findViewById(android.R.id.content)).getChildAt(0)).getChildAt(0);
         for(int i=0;i<80&&!"true".equals(js(web,"typeof window.syncRequest==='function'&&typeof syncOperation==='function'"));i++)SystemClock.sleep(100);
@@ -156,6 +166,20 @@ public final class AndroidTests extends Instrumentation {
         runOnMainSync(()->context.startForegroundService(new Intent(context,SyncService.class)));
         for(int i=0;i<100&&SyncService.current==null;i++)SystemClock.sleep(100);
         check(SyncService.current!=null,"foreground connected-device service starts independently of Bluetooth test hardware");
+        SystemClock.sleep(300);
+        NotificationManager notifications=context.getSystemService(NotificationManager.class);
+        StatusBarNotification initial=Arrays.stream(notifications.getActiveNotifications()).filter(n->n.getId()==6201).findFirst().orElseThrow(()->new AssertionError("Missing service notification"));
+        CharSequence quietText=initial.getNotification().extras.getCharSequence(Notification.EXTRA_TEXT);
+        check(quietText.toString().equals("后台服务已开启 / Background service enabled"),"background notification uses fixed neutral text");
+        check(initial.getNotification().getSmallIcon().getResId()==android.R.drawable.ic_menu_my_calendar,"service icon is a calendar rather than an active-sync indicator");
+        check(notifications.getNotificationChannel("schedule-sync").getImportance()==NotificationManager.IMPORTANCE_LOW,"foreground channel stays silent without bypassing system requirements");
+        for(String update:new String[]{"syncing","error:TEST disconnected","retrying:TEST retry","review","synced"}){
+            runOnMainSync(()->{try{java.lang.reflect.Method method=SyncService.class.getDeclaredMethod("setStatus",String.class);method.setAccessible(true);method.invoke(SyncService.current,update);}catch(Exception error){throw new RuntimeException(error);}});
+            SystemClock.sleep(50);
+            StatusBarNotification notice=Arrays.stream(notifications.getActiveNotifications()).filter(n->n.getId()==6201).findFirst().get();
+            check(notice.getPostTime()==initial.getPostTime()&&quietText.equals(notice.getNotification().extras.getCharSequence(Notification.EXTRA_TEXT)),"status stays in app without reposting notification: "+update);
+        }
+        check(SyncService.settings(context).getString("lastError").equals("TEST retry")&&SyncService.settings(context).getLong("lastSync")>1234,"quiet notification retains errors and last successful sync for inspection");
         JournalAccess access=SyncService.current.access;String source=String.join("",Collections.nCopies(64,"a"));
         byte[] before=Files.readAllBytes(new File(context.getFilesDir(),"journal.json").toPath());
         js(web,"activeDraft={text:'UNSAVED-DRAFT'};true");

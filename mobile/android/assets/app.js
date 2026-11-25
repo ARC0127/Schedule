@@ -871,13 +871,13 @@ function renderSync() {
   try { paired.value = permissions.autoSync?.peer || sessionStorage.getItem('peer') || ''; } catch {}
   paired.addEventListener('change',()=>{
     if(!paired.value)return;
-    action('autoSync',JSON.stringify({enabled:permissions.autoSync?.enabled!==false,peer:paired.value,hours:permissions.autoSync?.hours||2}));
+    action('autoSync',JSON.stringify({enabled:permissions.autoSync?.enabled!==false,peer:paired.value,hours:permissions.autoSync?.hours||1}));
   });
   if (!permissions.bluetoothPermission) sync.append(button(t('允许附近设备', 'Allow Nearby devices'), () => action('bluetoothPermission'), 'primary'));
   else if (permissions.bluetooth) sync.append(field(t('电脑', 'Computer'), paired));
   else sync.append(node('p', t('蓝牙不可用或未开启。', 'Bluetooth is unavailable or turned off.')));
   sync.append(button(t('系统蓝牙设置', 'Bluetooth settings'), () => action('bluetoothSettings'), 'quiet'));
-  const auto=permissions.autoSync||{enabled:true,hours:2};
+  const auto=permissions.autoSync||{enabled:true,hours:1};
   const automatic=node('label',undefined,'check-row'),toggle=document.createElement('input');toggle.type='checkbox';toggle.checked=auto.enabled;
   toggle.addEventListener('change',()=>{
     if(!toggle.checked){action('stop');return;}
@@ -888,7 +888,7 @@ function renderSync() {
   if(auto.peer&&permissions.companionSupported&&!permissions.companionAssociated)sync.append(button(t('允许后台自动连接','Allow background reconnection'),()=>action('companion'),'quiet'));
   sync.append(node('p',t('首次选定电脑后会记住设备，无需再次点击连接。允许后台连接后，系统可在电脑重新连接时唤醒同步。','Your selected computer is remembered. No repeated Connect action is needed. Background permission lets Android wake sync when the computer reconnects.'),'muted'));
   sync.append(button(t('后台运行设置','Background app settings'),()=>action('backgroundSettings'),'quiet'));
-  sync.append(node('p',t(`每 ${auto.hours} 小时尝试，重连后同步一次。周期在电脑端修改。后台运行会显示通知，有草稿时延后。`,`Try every ${auto.hours} hours and after reconnecting. Change the interval on Windows. A background notification stays visible; unsaved drafts defer sync.`),'muted'));
+  sync.append(node('p',t(`每 ${auto.hours} 小时尝试，重连后同步一次。周期在电脑端修改。后台仅保留静默服务通知，进度和错误在此查看；有草稿时延后。`,`Try every ${auto.hours} hours and after reconnecting. Change the interval on Windows. A quiet service notification stays visible; progress and errors remain here. Unsaved drafts defer sync.`),'muted'));
   if(!permissions.wifiPermission)sync.append(button(t('允许 Wi-Fi 直连加速', 'Allow direct Wi-Fi transfer'),()=>action('wifiPermission'),'quiet'));
   sync.append(node('p',t('自动同步优先局域网，否则使用蓝牙，不切换网络。电脑手动同步时可启用临时热点加速。原图只补传缺失部分。','Automatic sync uses LAN or Bluetooth without switching networks. Manual sync on Windows can use a temporary hotspot. Only missing original images are transferred.'),'muted'));
   const status = {
