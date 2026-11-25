@@ -3,22 +3,22 @@
 <p align="center"><b>让每天的想法，都有地方安放。</b></p>
 <p align="center">Windows × Android · 日历、想法与项目 · 本地保存，双向同步</p>
 <p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
-<p align="center"><a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.14">下载最新版</a> · <a href="docs/releases/0.0.14.md">版本说明</a> · <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a></p>
+<p align="center"><a href="https://github.com/ARC0127/Schedule/releases/tag/v0.0.15">下载最新版</a> · <a href="docs/releases/0.0.15.md">版本说明</a> · <a href="https://arc0127.github.io/">ARCLIGHT</a> · <a href="LICENSE">MIT</a></p>
 
 ![Schedule：电脑上整理思路，手机上随手记录](docs/images/hero.png)
 
-<p align="center"><sub>两端应用使用演示数据展示。无需账号，桌面版直接打开。</sub></p>
+<p align="center"><sub>两端应用使用演示数据展示。记录与设备同步无需云端账号，桌面版直接打开。</sub></p>
 
 ## 选择你的设备
 
-| Windows 0.0.14 | Android 1.1.13 | 电脑 + 手机 |
+| Windows 0.0.15 | Android 1.1.14 | 电脑 + 手机 |
 | :--- | :--- | :--- |
-| [**下载 Windows ZIP**](https://github.com/ARC0127/Schedule/releases/download/v0.0.14/Schedule-0.0.14-windows-x64.zip) | [**下载 Android APK**](https://github.com/ARC0127/Schedule/releases/download/v0.0.14/Schedule.Android-1.1.13.apk) | [**下载合并包**](https://github.com/ARC0127/Schedule/releases/download/v0.0.14/Schedule-Windows-0.0.14-Android-1.1.13.zip) |
+| [**下载 Windows ZIP**](https://github.com/ARC0127/Schedule/releases/download/v0.0.15/Schedule-0.0.15-windows-x64.zip) | [**下载 Android APK**](https://github.com/ARC0127/Schedule/releases/download/v0.0.15/Schedule.Android-1.1.14.apk) | [**下载合并包**](https://github.com/ARC0127/Schedule/releases/download/v0.0.15/Schedule-Windows-0.0.15-Android-1.1.14.zip) |
 | 解压整个文件夹，打开 `Journal.exe` | 在原应用上覆盖安装，保留已有记录 | 两端应用与安装说明，一次下载 |
 
 Windows 需要 Windows 10/11 x64、.NET Framework 4.8 和 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。Android 支持 8.0 及以上。Windows 程序暂未签名，系统可能提示未知发布者。运行软件不需要 Python 或 Node.js。
 
-> **升级时**：Windows 从托盘退出后覆盖原程序目录，保留 `%USERPROFILE%\.schedule` 数据目录。Android 直接覆盖安装同签名 APK，**不要卸载或清空数据**。两端都更新后即可使用新的原图分批传输。
+> **升级时**：Windows 从托盘退出后覆盖原程序目录，保留 `%USERPROFILE%\.schedule` 数据目录。Android 直接覆盖安装同签名 APK，**不要卸载或清空数据**。两端都升级后再同步新的分析请求与报告。
 
 ## 记录、整理，然后继续
 
@@ -28,15 +28,17 @@ Windows 需要 Windows 10/11 x64、.NET Framework 4.8 和 [WebView2 Runtime](htt
 
 电脑端还可以关联本地文件夹、拖入文件、调整侧栏与编辑区宽度。托盘与桌面悬浮入口让当天安排随时可见。Codex 和 Claude Code 共用同一套本地读写接口。
 
-## 这次更新：安静同步，每小时一次
+## 这次更新：手动分析与追问
 
-- **通知更简洁**：手机后台通知固定显示服务已开启，进度和失败详情留在同步页。升级时旧的 2 小时设置一次性改为 1 小时，暂停状态和配对信息保留。
-- **应用内更新**：查看 GitHub 正式版本及说明，下载校验后安装。Windows 自动退出并重启，Android 由系统确认安装。
-- **每小时同步**：首次选择配对设备并启用后，恢复连接时同步一次，也会在保存改动后空闲时尝试同步。电脑留在托盘即可，手机不必一直打开同步页。
-- **保留冲突确认**：独立新增自动合并，同一项两端都修改时暂停提交，由电脑确认。
-- **继续传原图**：按文件分块传输，只补传缺少的原图，不重新压缩图片。
+- **选择后再分析**：在电脑顶部“分析与追问”或手机“追问”页，选当天、最近 7 天或某个项目，查看文字预览后手动提交。
+- **连接本地助手**：Windows 绑定已安装的 Codex 或 Claude Code。Codex 从可用目录选择支持 xhigh 的最新旗舰系列，Claude 使用 Opus / xhigh。
+- **请求和报告一起同步**：手机提交的请求由电脑处理，报告随后同步回来。普通保存、每小时同步和重连不会自动创建分析请求。
+- **原笔记保持不变**：来源快照和报告保存到独立分析项目，图片和关联文件内容不发送。重复同步不重复调用，失败后手动重试。
+- **继续通过 OTA 更新**：Windows 顶部下载图标、Android「同步 → 软件更新」均可获取本版。两端都升级后再同步分析请求。
 
-旧版本需先手动覆盖安装一次，之后即可使用更新入口。已验证更新包校验、Windows 文件替换失败恢复，以及 Android 模拟器覆盖升级后的记录和原图保留。**已报告的实机蓝牙错误 10022 尚未确认解决**，OTA 使用各设备的互联网连接，不依赖两端蓝牙同步。详情见 [版本说明](docs/releases/0.0.14.md)。
+首次使用时，在 Windows「分析与追问 → 绑定本地助手」保存绑定。所选文字会发送至助手服务，适用该账号的用量与费用。见[使用说明](docs/analysis.md)和[版本说明](docs/releases/0.0.15.md)。
+
+Codex 已通过真实中文合成资料调用。Claude 接入及进程交互测试通过，但本机真实调用在三分钟测试窗口内未返回，尚未确认成功。此前报告的实机蓝牙错误 10022 也未在本版确认解决；OTA 使用各设备的互联网连接，不依赖蓝牙同步。
 
 <details>
 <summary><b>查看电脑日历、待办与手机展开月历</b></summary>
@@ -49,7 +51,8 @@ Windows 需要 Windows 10/11 x64、.NET Framework 4.8 和 [WebView2 Runtime](htt
 
 ## 第一次同步
 
-Windows **0.0.14** / Android **1.1.13** 加入应用内更新。Windows 点击顶部下载图标，Android 打开「同步 → 软件更新」，检查 GitHub 最新正式版本、查看说明并下载安装。安装前校验文件完整性，安卓还会核对应用签名并由系统确认安装。旧版本需手动覆盖安装一次才能获得更新入口。详见 [版本说明](docs/releases/0.0.14.md)。
+
+Windows **0.0.15** / Android **1.1.14** 支持应用内更新。Windows 点击顶部下载图标，Android 打开「同步 → 软件更新」，检查 GitHub 最新正式版本、查看说明并下载安装。安装前校验文件完整性，安卓还会核对应用签名并由系统确认安装。旧版本需手动覆盖安装一次才能获得更新入口。详见 [版本说明](docs/releases/0.0.15.md)。
 
 两端支持后台自动同步。两端首次选择已配对设备并启用后，默认每 **1 小时**尝试，恢复连接后同步一次，已保存改动会在空闲后同步。电脑端可改为 1／2／4／8 小时。手机不必一直停在同步页，通知栏可以暂停；有未保存草稿或待确认冲突时延后。电脑须保持运行，托盘即可。系统后台限制可能推迟执行。
 
@@ -102,7 +105,7 @@ HTTP/HTTPS 网址、Markdown 网页链接和 Windows 路径在编辑区与总览
 
 新想法默认是普通笔记，手动设为待办后可标为重要或关联日程。日程设置可选择关联任意日期的想法，关联后完成状态跟随想法，在待办里只显示一项；从日程、项目或日历完成它，其他位置同步，关联提醒也取消。转回普通想法会清除截止日期并解除关联，日程保留为独立日程。旧版本已经打勾的想法归入已完成，有截止日期或待办标记的归入待办。
 
-文字样式会随记录保存，并显示在项目总览和展开的当天页面中。应用内复制粘贴保留样式，纯文本复制保留正文。以上功能均已包含在 v0.0.14 Windows 下载包中。
+文字样式会随记录保存，并显示在项目总览和展开的当天页面中。应用内复制粘贴保留样式，纯文本复制保留正文。以上功能均已包含在 v0.0.15 Windows 下载包中。
 
 桌面版启动时打开当天。跨过午夜、从托盘恢复或唤醒后会更新“今天”；停留在当天且未输入时自动进入新一天，正在编辑或浏览历史日期时保留当前日期。点击“今天”随时返回系统当前日期。
 
@@ -159,7 +162,7 @@ py -3 scripts/build.py
 py -3 scripts/package_release.py
 ```
 
-输出为 `dist/Schedule-0.0.14-windows-x64.zip`，包含程序、中英文 README、首页图、许可证及本版发布说明。
+输出为 `dist/Schedule-0.0.15-windows-x64.zip`，包含程序、中英文 README、首页图、许可证及本版发布说明。
 
 开发测试另需 Node.js 与 npm：
 
@@ -185,7 +188,7 @@ npm run test:math-svg
 py -3 scripts/test_native_models.py
 ```
 
-原生测试需要桌面会话和 WebView2，启动前设置独立数据目录。CI 执行状态迁移测试和 Windows 构建。版本标签触发 Windows 构建并创建草稿 Release，使用 [版本说明](docs/releases/0.0.14.md)。同签名 Android APK 与合并包上传后再公开发布。
+原生测试需要桌面会话和 WebView2，启动前设置独立数据目录。CI 执行状态迁移测试和 Windows 构建。版本标签触发 Windows 构建并创建草稿 Release，使用 [版本说明](docs/releases/0.0.15.md)。同签名 Android APK 与合并包上传后再公开发布。
 
 ## 当前边界
 
@@ -195,4 +198,4 @@ Windows 界面为中文，Android 支持中英文。数据使用单用户 JSON �
 
 由 [**ARCLIGHT**](https://arc0127.github.io/) 制作，使用 [MIT 许可证](LICENSE)。欢迎通过 [Issues](https://github.com/ARC0127/Schedule/issues) 反馈问题。
 
-[架构与数据说明](docs/architecture.md) · [第三方许可](THIRD_PARTY_NOTICES.md) · [v0.0.14 发布说明](docs/releases/0.0.14.md)
+[架构与数据说明](docs/architecture.md) · [第三方许可](THIRD_PARTY_NOTICES.md) · [v0.0.15 发布说明](docs/releases/0.0.15.md)

@@ -13,6 +13,7 @@
       ><strong>Schedule</strong><span class="j-preview">浏览器预览</span>
     </div>
     <div class="j-window-tools">
+      <button type="button" id="j-analysis-open" class="j-icon" aria-label="分析与追问" title="分析与追问"><i data-lucide="messages-square" aria-hidden="true"></i></button>
       <button type="button" id="j-bluetooth-open" class="j-bluetooth-entry" aria-label="蓝牙同步" hidden><i data-lucide="bluetooth" aria-hidden="true"></i><span>蓝牙同步</span></button>
       <button type="button" id="j-update-open" class="j-icon" aria-label="软件更新" title="软件更新" hidden><i data-lucide="download" aria-hidden="true"></i></button>
       <button type="button" class="j-icon" data-action="data" aria-label="数据与备份" title="备份、恢复与导入导出"><i data-lucide="archive" aria-hidden="true"></i></button>
@@ -364,6 +365,16 @@
     <div id="j-image-stage" tabindex="0" autofocus aria-label="图片，滚轮缩放，拖动查看细节，点击图片外部关闭">
       <div id="j-image-surface"><img id="j-image-full" alt="" draggable="false" /></div>
     </div>
+  </dialog>
+  <dialog id="j-analysis-dialog" class="j-feature-dialog" aria-labelledby="j-analysis-title">
+    <div class="j-feature-heading"><h2 id="j-analysis-title">分析与追问</h2><button type="button" id="j-analysis-close" class="j-icon" aria-label="关闭分析"><i data-lucide="x"></i></button></div>
+    <p class="j-analysis-hint">手动提交 · 所选文字会发送给已绑定的助手服务，可能产生用量费用。原始记录不改写，图片和关联文件不上传。</p>
+    <details><summary>绑定本地助手</summary><div class="j-analysis-controls"><select id="j-analysis-binding"><option value="codex">Codex · 最新可用旗舰 · xhigh</option><option value="claude">Claude · 最新 Opus · xhigh</option></select><label><input id="j-analysis-enabled" type="checkbox">允许处理手动请求</label><button type="button" id="j-analysis-bind">保存绑定</button><button type="button" id="j-analysis-exe">选择 CLI</button><button type="button" id="j-analysis-folder">打开分析项目</button></div><p id="j-analysis-binding-status" class="j-analysis-hint"></p></details>
+    <div class="j-analysis-controls"><select id="j-analysis-provider" aria-label="分析助手"><option value="codex">Codex</option><option value="claude">Claude</option></select><select id="j-analysis-scope" aria-label="分享范围"></select></div>
+    <textarea id="j-analysis-question" rows="2" maxlength="4000" placeholder="特别想深入的问题（可选）"></textarea>
+    <details><summary>查看将分享的文字</summary><pre id="j-analysis-preview"></pre></details>
+    <div class="j-analysis-controls"><button type="button" id="j-analysis-submit">分析与追问</button><span id="j-analysis-status" role="status"></span></div>
+    <div id="j-analysis-list"></div>
   </dialog>
   <dialog id="j-update-dialog" class="j-feature-dialog" aria-labelledby="j-update-title">
     <div class="j-picker-heading"><h2 id="j-update-title">软件更新</h2><button type="button" class="j-icon" id="j-update-close" aria-label="关闭软件更新"><i data-lucide="x" aria-hidden="true"></i></button></div>

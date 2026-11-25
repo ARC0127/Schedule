@@ -20,11 +20,14 @@ public final class AndroidTests extends Instrumentation {
     private int count;
     private boolean bootSeed;
     private String mode="";
+    private String expectedVersion="",previousVersion="";
 
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
         bootSeed = arguments != null && "1".equals(arguments.getString("bootSeed"));
         mode=arguments==null?"":arguments.getString("mode","");
+        expectedVersion=arguments==null?"":arguments.getString("expectedVersion","");
+        previousVersion=arguments==null?"":arguments.getString("previousVersion","");
         start();
     }
 
@@ -41,6 +44,8 @@ public final class AndroidTests extends Instrumentation {
             else if("automatic".equals(mode))automaticSync();
             else if("reconnect".equals(mode))reconnect();
             else if("ota".equals(mode))ota();
+            else if("ota-public".equals(mode))publicOta();
+            else if("analysis".equals(mode))analysis();
             else if("presence-setup".equals(mode)){
                 SyncService.configure(getTargetContext(),"00:11:22:33:44:55",true,2);
                 CompanionConnection.observe(getTargetContext(),true);
@@ -75,6 +80,51 @@ public final class AndroidTests extends Instrumentation {
         sendStatus(1, result);
     }
 
+    private void analysis()throws Exception {
+        Context context=getTargetContext();
+        Activity activity=startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        WebView web=(WebView)((ViewGroup)((ViewGroup)activity.findViewById(android.R.id.content)).getChildAt(0)).getChildAt(0);
+        try {
+            for(int i=0;i<80&&!"true".equals(js(web,"typeof state==='object'&&typeof renderAnalysis==='function'"));i++)SystemClock.sleep(100);
+            String rendered=js(web,"(()=>{try{zh=true;day=Journal.calendarDate();save(next=>{next.days[day]='Synthetic private note';next.projects=[{id:'analysis-test',name:'合成测试项目'}];next.ideas=[{id:'test',date:day,text:'Synthetic 项目想法',state:'note',important:false,due:'',projects:['analysis-test']}];next.analyses={};});selectTab('analysis');analysisScope='project:analysis-test';renderAnalysisPage();return document.querySelector('.analysis-form pre').textContent;}catch(e){return e.stack;}})()");
+            check(rendered.contains("Synthetic")&&rendered.contains("项目想法")&&!rendered.contains("private note"),"project scope includes only linked idea: "+rendered);
+            check("0".equals(js(web,"Object.keys(state.analyses).length")),"opening analysis page does not queue a request");
+            js(web,"document.querySelector('.analysis-form textarea').value='What would falsify this?';document.querySelector('.analysis-form button.primary').click();true");
+            check("1".equals(js(web,"Object.keys(state.analyses).length")),"manual click creates exactly one queued request");
+            check("true".equals(js(web,"Object.values(state.analyses)[0].status==='queued'&&Object.values(state.analyses)[0].effort==='xhigh'")),"manual request retains effort and waiting status");
+            String snapshot=js(web,"JSON.stringify(state.analyses)");
+            js(web,"syncOperation('export',{source:call('load')._sync?.source||'analysis-test'},call).then(result=>{window.analysisWire=result;window.analysisExportDone=true}).catch(e=>window.analysisExportError=e.message);true");
+            for(int i=0;i<60&&!"true".equals(js(web,"window.analysisExportDone===true"));i++)SystemClock.sleep(100);
+            check("true".equals(js(web,"JSON.stringify(window.analysisWire).includes('analysis/')")),"native Android sync export includes manual analysis entity");
+            js(web,"(()=>{const sent=window.analysisWire,response=structuredClone(sent),key=Object.keys(response.entities).find(k=>k.startsWith('analysis/'));Object.assign(response.entities[key],{status:'completed',model:'synthetic-model',result:'A specific question: what observation contradicts it?'});response.conflicts={};syncOperation('apply',{sent,response},call).then(value=>{call('resolveSync',JSON.stringify(value));state=Object.assign(Journal.blank(),call('load'));renderAnalysisPage();window.analysisApplied=true;}).catch(e=>window.analysisApplyError=e.message);return true;})()");
+            for(int i=0;i<60&&!"true".equals(js(web,"window.analysisApplied===true"));i++)SystemClock.sleep(100);
+            check("true".equals(js(web,"window.analysisApplied===true")),"desktop result applies through Android sync and native storage: "+js(web,"window.analysisApplyError||''"));
+            check("true".equals(js(web,"document.querySelector('.analysis-result').textContent.includes('what observation')")),"completed report renders with source snapshot");
+            check("true".equals(js(web,"state.days[day]==='Synthetic private note'&&state.ideas[0].text==='Synthetic 项目想法'")),"analysis does not edit original phone notes");
+            js(web,"document.querySelector('.analysis-result').open=true;true");capture("android-analysis.png");
+            runOnMainSync(()->web.reload());
+            for(int i=0;i<80&&!"true".equals(js(web,"typeof state==='object'&&Object.keys(state.analyses||{}).length===1"));i++)SystemClock.sleep(100);
+            check("true".equals(js(web,"Object.values(state.analyses)[0].status==='completed'&&Object.values(state.analyses)[0].result.includes('what observation')")),"native saved report survives WebView reload");
+        }finally{runOnMainSync(activity::finish);}
+    }
+    private void publicOta()throws Exception {
+        Context context=getTargetContext();
+        String installed=context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionName;
+        check(installed.equals(previousVersion),"isolated device runs previous official version "+installed);
+        File journal=new File(context.getFilesDir(),"journal.json");
+        if(!journal.exists())Files.write(journal.toPath(),"{\"days\":{\"2026-11-25\":\"SYNTHETIC OTA retention\"},\"ideas\":[],\"projects\":[],\"docs\":{}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        byte[] before=Files.readAllBytes(journal.toPath());
+        AppUpdates updater=AppUpdates.get(context);updater.start(false);
+        JSONObject status=updater.state();
+        for(int i=0;i<300&&status.getBoolean("busy");i++){SystemClock.sleep(100);status=updater.state();}
+        check(status.getString("error").isEmpty()&&status.getBoolean("available")&&status.getString("version").equals(expectedVersion),"public OTA discovers expected version: "+status);
+        check(status.getString("notes").contains("English")&&status.getString("notes").contains("分析"),"OTA displays preserved bilingual release notes");
+        updater.start(true);status=updater.state();
+        for(int i=0;i<900&&status.getBoolean("busy");i++){SystemClock.sleep(100);status=updater.state();}
+        check(status.getString("error").isEmpty()&&status.getBoolean("ready"),"public APK downloaded with digest, package, version and signature verified: "+status.getString("error"));
+        check(AppUpdates.apk(context).length()>0,"verified APK is ready for system installer");
+        check(Arrays.equals(before,Files.readAllBytes(journal.toPath())),"OTA check and download preserve existing journal bytes");
+    }
     private void ota()throws Exception {
         Context context=getTargetContext();
         JSONObject asset=new JSONObject().put("name","Schedule.Android-9.0.0.apk").put("browser_download_url","https://github.com/ARC0127/Schedule/releases/download/v9.0.0/Schedule.Android-9.0.0.apk").put("size",3).put("digest","sha256:"+String.join("",Collections.nCopies(64,"a")));

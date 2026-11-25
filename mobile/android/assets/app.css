@@ -13,6 +13,12 @@
   background: var(--bg);
   font-size: 15px;
 }
+.analysis-form > *, .analysis-result > * { margin-bottom: .8rem; }
+.analysis-form select, .analysis-form textarea { width: 100%; }
+.analysis-form pre, .analysis-result pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.7; }
+.analysis-form pre { max-height: 220px; overflow: auto; }
+.analysis-description { font-size: .84rem; line-height: 1.65; }
+.analysis-result summary { cursor: pointer; line-height: 1.6; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }

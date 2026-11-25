@@ -2116,3 +2116,11 @@ html #journal-ui .j-year-grid {
 .j-auto-sync-row { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:12px 0 4px; }
 .j-auto-sync-row select { border:1px solid var(--line, #dde4db); background:var(--paper, #fafbf8); color:inherit; border-radius:8px; padding:6px 10px; font:inherit; }
 #j-update-notes { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow-y: auto; font-size: 12px; line-height: 1.7; margin-top: 12px; }
+
+#j-analysis-dialog{width:min(760px,calc(100vw - 48px));max-height:85vh;overflow:auto;}
+#j-analysis-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font:inherit;max-height:48vh;overflow:auto;padding:12px;background:#f6f8f4;border-radius:8px;}
+#j-analysis-dialog textarea{box-sizing:border-box;width:100%;resize:vertical;padding:10px;border:1px solid #dce3da;border-radius:8px;background:transparent;font:inherit;}
+.j-analysis-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0;}
+.j-analysis-controls select,.j-analysis-controls button{padding:7px 10px;border:1px solid #dce3da;border-radius:7px;background:#f7f9f5;color:inherit;font:inherit;}
+.j-analysis-hint{font-size:12px;line-height:1.6;color:#7a877c;white-space:pre-wrap;}
+#j-analysis-list>details{border-top:1px solid #e4e9e1;padding:14px 0;}

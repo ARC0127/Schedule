@@ -26,6 +26,11 @@ internal class JournalWindow : Form
     readonly System.Windows.Forms.Timer autoTimer=new System.Windows.Forms.Timer{Interval=30000};
     readonly AutoSyncSettings autoSettings=new AutoSyncSettings();
     AutoSyncPolicy autoPolicy=new AutoSyncPolicy();
+    readonly AnalysisRunner analysis=new AnalysisRunner(Program.DataDir);
+    readonly System.Windows.Forms.Timer analysisTimer=new System.Windows.Forms.Timer{Interval=5000};
+    System.Threading.CancellationTokenSource analysisCancel;
+    bool analysisBusy;
+    string activeAnalysisId="";
     string initialMode;
     LocalApi api;
     readonly Dictionary<string,TaskCompletionSource<string>> apiReplies=new Dictionary<string,TaskCompletionSource<string>>();
@@ -60,6 +65,8 @@ internal class JournalWindow : Form
         };
         Shown += async delegate { if(!initializationStarted){initializationStarted=true;await Init();} };
         autoTimer.Tick+=async delegate{await AutoSyncTick();};
+        analysisTimer.Tick+=async delegate{await AnalysisTick();};
+        FormClosed+=delegate{analysisTimer.Dispose();if(analysisCancel!=null)analysisCancel.Cancel();};
         FormClosed+=delegate{autoTimer.Dispose();};
         FormClosing += delegate(object sender, FormClosingEventArgs e) {
             if (closing) return;
@@ -128,6 +135,7 @@ internal class JournalWindow : Form
             } else if(op=="uiReady") {
                 ready=true;backgroundLaunch=false;tray.Visible=true;RefreshTrayMenu();activationTimer.Start();
                 if(api==null)api=new LocalApi(this);
+                analysisTimer.Start();
                 try{autoSettings.Load();autoPolicy.LastSuccess=autoSettings.LastSuccess;autoTimer.Start();}catch(Exception error){autoSettings.Message=error.Message;}
                 if(initialMode=="dock"&&Program.ActivationDate==null)ShowDock();else if(initialMode=="tray"&&Program.ActivationDate==null)HideToTray();else OpenActivation();
                 initialMode="main";
@@ -153,6 +161,11 @@ internal class JournalWindow : Form
             else if(op=="downloadUpdate")result=await DownloadUpdate();
             else if(op=="installUpdate")result=await InstallUpdate();
             else if(op=="autoSyncSettings") result=autoSettings.View();
+            else if(op=="assistantSettings")result=analysis.View();
+            else if(op=="setAssistant") {if(analysisBusy)throw new InvalidOperationException("请先停止当前分析再修改绑定。");analysis.Configure((Dictionary<string,object>)req["payload"]);result=analysis.View();}
+            else if(op=="assistantExecutable") {using(var picker=new OpenFileDialog{Filter="CLI executable (*.exe)|*.exe",Title="选择 Codex 或 Claude CLI"})result=new{path=picker.ShowDialog(this)==DialogResult.OK?picker.FileName:""};}
+            else if(op=="assistantFolder") {analysis.Prepare();System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe",AnalysisRunner.Quote(analysis.Root)){UseShellExecute=true});result=new{opened=true};}
+            else if(op=="assistantCancel") {var payload=(Dictionary<string,object>)req["payload"];if(analysisCancel!=null&&payload!=null&&Convert.ToString(payload["id"])==activeAnalysisId)analysisCancel.Cancel();result=new{cancelled=true};}
             else if(op=="setAutoSync") {
                 var settings=(Dictionary<string,object>)req["payload"];
                 if((bluetoothRunning||autoChecking)&&Convert.ToBoolean(settings["enabled"]))throw new InvalidOperationException("正在检查连接，请稍后修改。仍可暂停自动同步。");
@@ -353,6 +366,29 @@ internal class JournalWindow : Form
         finally{autoChecking=false;if(!closing&&!IsDisposed)BeginInvoke(new Action(async delegate{await PublishAutoStatus();}));}
     }
     async Task PublishAutoStatus(){if(!closing&&!IsDisposed&&web.CoreWebView2!=null)await web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('journal:auto-sync',{detail:"+Program.Json.Serialize(autoSettings.View())+"}))");}
+    async Task AnalysisTick(){
+        if(!ready||closing)return;
+        if(analysisBusy){
+            var cancellation=analysisCancel;string active=activeAnalysisId;
+            if(cancellation!=null&&active!="")try{string status=await web.CoreWebView2.ExecuteScriptAsync("window.scheduleAnalysisCancelled("+Program.Json.Serialize(active)+")");if(status=="true"&&cancellation==analysisCancel)cancellation.Cancel();}catch(Exception error){System.Diagnostics.Debug.WriteLine(error.Message);}
+            return;
+        }
+        if(bluetoothRunning||autoChecking||updateBusy||!analysis.Enabled)return;
+        analysisBusy=true;analysisCancel=new System.Threading.CancellationTokenSource();
+        try{
+            string raw=await web.CoreWebView2.ExecuteScriptAsync("window.scheduleAnalysisPending&&window.scheduleAnalysisPending("+Program.Json.Serialize(analysis.Provider)+")");
+            var item=Program.Json.DeserializeObject(raw) as Dictionary<string,object>;if(item==null)return;
+            string id=Convert.ToString(item["id"]);activeAnalysisId=id;var row=(Dictionary<string,object>)item["row"];
+            var running=new {status="running",error=""};
+            var applied=Program.Json.Deserialize<Dictionary<string,object>>(await ExecuteApi(Program.Json.Serialize(new{op="assistant_update",id=id,expected=row,patch=running})));
+            if(!Convert.ToBoolean(applied["ok"])||!Convert.ToBoolean(applied["result"]))return;
+            Dictionary<string,object> outcome;
+            try{outcome=await Task.Run(()=>analysis.Run(id,row,analysisCancel.Token));}
+            catch(Exception error){outcome=new Dictionary<string,object>{{"status","failed"},{"error",error.Message}};}
+            if(!closing&&!IsDisposed)await ExecuteApi(Program.Json.Serialize(new{op="assistant_update",id=id,expected=row,patch=outcome}));
+        }catch(Exception error){System.Diagnostics.Debug.WriteLine("Schedule analysis: "+error.Message);}
+        finally{analysisBusy=false;activeAnalysisId="";analysisCancel.Dispose();analysisCancel=null;}
+    }
     internal async void ToggleDockIdea(string date,string id)
     {
         await web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new CustomEvent('journal:toggle-idea',{detail:"+Program.Json.Serialize(new {date=date,id=id})+"}))");

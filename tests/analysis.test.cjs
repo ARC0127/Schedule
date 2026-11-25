@@ -1,0 +1,31 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
+global.ScheduleAnalysis=require('../src/web/analysis.js');global.ScheduleContent=require('../src/web/content.js');
+const a=global.ScheduleAnalysis,s=require('../src/web/sync.js');
+test('manual snapshot strips image references, preserves text, rejects invalid input',()=>{
+ const input=[{key:'idea/one',label:'Idea',text:'claim ![image](schedule-image:abc.png) \uE000'}];
+ const request=a.create('codex','title',input,'counterexamples');input[0].text='later edit';
+ assert.match(request.row.source,/claim/);assert.doesNotMatch(request.row.source,/later edit|schedule-image|\uE000/);
+ assert.equal(request.row.status,'queued');assert.equal(request.row.effort,'xhigh');
+ assert.throws(()=>a.create('codex','title',[]));
+ for(const patch of [{source:''},{source:'x'.repeat(200001)},{effort:'low'},{provider:'shell'},{status:'unknown'}])assert.throws(()=>a.validate(request.id,{...request.row,...patch}));
+ assert.throws(()=>a.validate('../outside',request.row));
+ assert.equal(fs.readFileSync('src/web/analysis.js','utf8'),fs.readFileSync('mobile/android/assets/analysis.js','utf8'));
+});
+test('phone manual request and desktop result sync in both directions without touching notes',async()=>{
+ const request=a.create('claude','project',[{key:'idea/i',label:'2026-11-25',text:'what evidence?'}]);
+ const phone={days:{'2026-11-25':'original'},ideas:[],projects:[],docs:{},analyses:{[request.id]:request.row}};
+ const sent=await s.phoneExport(phone,[],()=>{}),key='analysis/'+request.id;
+ const pc=await s.desktopImport(sent.entities,{}, {},[],[]);assert.deepEqual(pc.analyses,phone.analyses);
+ assert.equal(pc.records['2026-11-25'].body,'original');
+ pc.analyses[request.id]={...pc.analyses[request.id],status:'completed',result:'A counterexample',model:'claude-opus-test'};
+ const returned=await s.desktopExport(pc.records,pc.projects,pc.images,pc.analyses);
+ const merged=s.merge(sent.entities,returned.entities,sent.entities);assert.deepEqual(Object.keys(merged.conflicts),[]);
+ const next=s.phoneImport(merged.entities,phone,{base:merged.entities});assert.deepEqual(next.days,phone.days);
+ assert.equal(next.analyses[request.id].result,'A counterexample');assert.equal(phone.analyses[request.id].status,'queued');
+ assert.deepEqual(s.merge(sent.entities,merged.entities,sent.entities).entities,merged.entities);
+ assert.match(a.exportText(next.analyses[request.id]),/what evidence/);
+ const cancelled={...sent.entities,[key]:{...request.row,status:'cancelled'}};
+ const conflict=s.merge(sent.entities,returned.entities,cancelled);assert.ok(conflict.conflicts[key]);
+ const resolved=s.resolveReview(conflict,{approved:true,peer:'phone',conflicts:conflict.conflicts,decisions:{[key]:'phone'}},'phone');
+ assert.equal(resolved.entities[key].status,'cancelled');
+});

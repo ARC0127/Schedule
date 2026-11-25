@@ -13,6 +13,7 @@ internal static class JournalSyncCommit
         var next=Program.Json.Deserialize<Store>(Program.Json.Serialize(Program.Data));
         var widget=(Map)next.WidgetState;var pc=(Map)widget["privateContent"];
         pc["edits"]=payload["records"];pc["projects"]=payload["projects"];widget["nativeImages"]=payload["images"];
+        if(payload.ContainsKey("analyses"))pc["analyses"]=payload["analyses"];
         var schedules=new Dictionary<string,Schedule>();
         foreach(var raw in (IList)payload["events"]) {
             var entry=ScheduleSync.Entry.FromWire(raw);

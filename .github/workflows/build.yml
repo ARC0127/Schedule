@@ -21,8 +21,9 @@ jobs:
       - run: python scripts/test_batch_assets.py
       - run: python scripts/test_auto_sync.py
       - run: python scripts/test_updates.py
+      - run: python scripts/test_analysis.py
       - name: Check shared Windows and Android sync model
-        run: python -c "from pathlib import Path; assert Path('src/web/sync.js').read_bytes() == Path('mobile/android/assets/sync.js').read_bytes()"
+        run: python -c "from pathlib import Path; assert all(Path('src/web', n).read_bytes() == Path('mobile/android/assets', n).read_bytes() for n in ['sync.js', 'analysis.js'])"
       - uses: actions/upload-artifact@v4
         with:
           name: Schedule-windows-x64

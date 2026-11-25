@@ -1,4 +1,4 @@
-# Schedule for Android · 1.1.13
+# Schedule for Android · 1.1.14
 
 后台通知不再反复显示进度或失败信息。默认每小时同步，旧的 2 小时设置升级时一次性迁移，错误详情仍在同步页。
 
@@ -8,15 +8,17 @@ The background notification no longer repeats progress or errors. Sync defaults 
 
 **Sync → Software updates** checks the latest stable APK on GitHub, displays release notes and verifies the download before opening Android's installer. Allow installation from Schedule when prompted. Older builds need one manual in-place upgrade; do not uninstall. Updates must match the app identity and signing certificate. Existing records and images stay in the app data directory.
 
-当前版本：默认每 1 小时自动同步，电脑恢复连接后同步一次。首次在手机选择已配对电脑并启用后台服务后，可以离开同步页，通知栏可暂停。间隔在新版 Windows 0.0.14 中修改。未保存草稿或冲突会暂停提交。自动模式不开热点、不切换电脑 Wi-Fi，手动模式保留直连加速。详情见 [0.0.14 版本说明](../docs/releases/0.0.14.md)。
+当前版本：默认每 1 小时自动同步，电脑恢复连接后同步一次。首次在手机选择已配对电脑并启用后台服务后，可以离开同步页，通知栏可暂停。间隔在新版 Windows 0.0.15 中修改。未保存草稿或冲突会暂停提交。自动模式不开热点、不切换电脑 Wi-Fi，手动模式保留直连加速。详情见 [0.0.15 版本说明](../docs/releases/0.0.15.md)。
 
-Current release: automatic sync every hour and once after reconnecting. Select the paired PC and enable the background service once; the sync page can then be closed. Pause from its notification. Change the interval in Windows 0.0.14. Unsaved drafts and conflicts defer commits. Automatic mode never starts a hotspot or switches Windows Wi-Fi; manual sync retains that option. See the [release notes](../docs/releases/0.0.14.md).
+Current release: automatic sync every hour and once after reconnecting. Select the paired PC and enable the background service once; the sync page can then be closed. Pause from its notification. Change the interval in Windows 0.0.15. Unsaved drafts and conflicts defer commits. Automatic mode never starts a hotspot or switches Windows Wi-Fi; manual sync retains that option. See the [release notes](../docs/releases/0.0.15.md).
 
-[返回项目首页 / Project home](../README.md) · [下载 / Downloads](https://github.com/ARC0127/Schedule/releases/tag/v0.0.14)
+[返回项目首页 / Project home](../README.md) · [下载 / Downloads](https://github.com/ARC0127/Schedule/releases/tag/v0.0.15)
 
-这里保留 Android 应用、构建脚本与测试源码。配套电脑端为仓库根目录的 Schedule 0.0.14。`windows/` 是历史独立蓝牙工具源码，日常使用请下载根项目发布的桌面应用。
+这里保留 Android 应用、构建脚本与测试源码。配套电脑端为仓库根目录的 Schedule 0.0.15。`windows/` 是历史独立蓝牙工具源码，日常使用请下载根项目发布的桌面应用。
 
-This directory contains the Android app, build script and tests. Use the desktop app at the repository root (0.0.14). The `windows/` subdirectory retains the legacy standalone Bluetooth utility for reference.
+This directory contains the Android app, build script and tests. The current release versions are Android 1.1.14 and Windows 0.0.15. The `windows/` subdirectory retains the legacy standalone Bluetooth utility for reference.
+
+The **Reflect / 追问** tab queues manual analysis requests for a locally bound Codex or Claude Code on Windows. It supports a day, the last seven days or a project, source previews, reports and Markdown export. Normal sync never generates a request. Upgrade both apps to sync the new analysis entities; credentials and executable paths remain local. See [the bilingual guide](../docs/analysis.md).
 
 生产签名密钥不公开。使用自己的密钥构建时，请使用独立测试设备／模拟器，无法覆盖官方签名的现有应用。
 Production signing keys are private. A build signed with your own key cannot update the official app; use a separate emulator or test device.
@@ -31,7 +33,7 @@ Production signing keys are private. A build signed with your own key cannot upd
 
 ### 安装与第一次同步
 
-1. 在红米 K70 打开 `Schedule.Android-1.1.13.apk` 并按 HyperOS 提示覆盖安装，保留原应用。应用支持 Android 8.0（API 26）及以上，面向 Android 16（API 36）构建。
+1. 在红米 K70 打开 `Schedule.Android-1.1.14.apk` 并按 HyperOS 提示覆盖安装，保留原应用。应用支持 Android 8.0（API 26）及以上，面向 Android 16（API 36）构建。
 2. 在 Windows 和手机的**系统蓝牙设置**中配对，确认两端显示的配对码。系统配对会保存设备身份。Schedule 在下一步单独建立应用使用的 RFCOMM 数据连接。
 3. 手机打开 **同步**，授权**附近设备**，选择已配对电脑并启用**后台自动同步**。首次可点**允许后台自动连接**完成系统授权，之后无需反复点击连接。
 4. 打开新版桌面 Schedule，点击右上角**蓝牙同步**，选择手机后点**双向同步**。无需单独运行同步工具。源码中保留的 `Schedule.Windows.Sync.exe` 是旧版共享日程客户端，只同步共享日程，不包含笔记、想法和图片。
@@ -39,7 +41,7 @@ Production signing keys are private. A build signed with your own key cannot upd
 
 ### 日程与提醒
 
-- 新版通过经典蓝牙 RFCOMM 双向合并笔记、想法、项目、原始图片和全部日程，包括旧版“仅此手机”日程。要求认证和加密，稳定编号和共同版本用于识别增删改及冲突。配套 Windows 0.0.14：同一项两边都改过时暂停整次同步，电脑发送通知并等待逐项确认。手机保留现有内容、共同版本和编辑能力，确认后重新同步。断线不会清除手机草稿，重试不会产生副本。文字元数据上限 100 MiB，原图独立分批传输，不计入该总量，且不压缩。仅与旧版电脑连接时退回共享日程协议，并提示同步范围。
+- 新版通过经典蓝牙 RFCOMM 双向合并笔记、想法、项目、原始图片和全部日程，包括旧版“仅此手机”日程。要求认证和加密，稳定编号和共同版本用于识别增删改及冲突。配套 Windows 0.0.15：同一项两边都改过时暂停整次同步，电脑发送通知并等待逐项确认。手机保留现有内容、共同版本和编辑能力，确认后重新同步。断线不会清除手机草稿，重试不会产生副本。文字元数据上限 100 MiB，原图独立分批传输，不计入该总量，且不压缩。仅与旧版电脑连接时退回共享日程协议，并提示同步范围。
 - Windows 关联想法和旧格式日程仍在电脑管理，关联想法的完成状态随想法同步。手机已有的项目、想法和图片保留。电脑与手机时区导致日期和时刻对应不上时，同步报错并保留当前数据。
 - 在 **同步 → 提醒权限** 开启通知和准时提醒。没有准时提醒授权时，系统仍可排程，但允许延后。程序在设备重启解锁、更新及重新打开时从本地恢复排程。HyperOS 可在**设置 → 应用 → 后台自启动**允许 Schedule 用于开机恢复。锁屏提醒受通知频道、勿扰和省电设置影响，建议先用一条几分钟后的测试日程验证。系统**强行停止**应用后，需要手动打开再恢复排程。
 - Windows 和手机各自可以提醒。同一手机上，同一事件、时刻及提前量只触发一次。改期、完成和删除会更新本地排程。曾进入排程的提醒可在 24 小时内补发。初次导入时已过期的提醒不会补发。
@@ -92,12 +94,12 @@ adb shell am instrument -w io.github.arc0127.schedule.tests/io.github.arc0127.sc
 
 ### Install and sync
 
-1. Open `Schedule.Android-1.1.13.apk` on the phone and install over the existing app. The app requires Android 8.0 (API 26) or later and targets Android 16 (API 36).
+1. Open `Schedule.Android-1.1.14.apk` on the phone and install over the existing app. The app requires Android 8.0 (API 26) or later and targets Android 16 (API 36).
 2. Pair the phone and Windows PC in their system Bluetooth settings. In Schedule on Android, open **Sync**, grant Nearby devices, select the paired PC, and enable **Automatic background sync**. Approve **Allow background reconnection** once for system companion wake-up. The listener remains available after leaving this screen.
 3. In the updated desktop Schedule app, open **Bluetooth sync**, select the phone and start **Two-way sync**. The separate `Schedule.Windows.Sync.exe` retained in this source package is a legacy shared-event-only client.
 4. Automatic sync checks periodically and after reconnecting; Windows can also start a manual sync. Android keeps the last synced events and their alarm schedules when the Bluetooth link closes.
 
-Updated apps use authenticated, encrypted Bluetooth Classic RFCOMM to merge notes, ideas, projects, original images and all events, including previously phone-only events. Stable IDs and a common baseline distinguish updates, deletions and conflicts. With Windows 0.0.14, concurrent edits pause the entire transaction. Review both versions on Windows and confirm before reconnecting. The phone keeps its data and baseline unchanged while waiting. Disconnected transfers can be retried without duplicate records. Original images are checked and chunked without recompression; metadata is limited to 100 MiB and originals transfer separately without a fixed aggregate quota. Older computers retain the shared-event protocol with a visible scope notice. Linked and legacy Windows events remain protected, and event dates/times must match the Windows time zone.
+Updated apps use authenticated, encrypted Bluetooth Classic RFCOMM to merge notes, ideas, projects, original images and all events, including previously phone-only events. Stable IDs and a common baseline distinguish updates, deletions and conflicts. With Windows 0.0.15, concurrent edits pause the entire transaction. Review both versions on Windows and confirm before reconnecting. The phone keeps its data and baseline unchanged while waiting. Disconnected transfers can be retried without duplicate records. Original images are checked and chunked without recompression; metadata is limited to 100 MiB and originals transfer separately without a fixed aggregate quota. Older computers retain the shared-event protocol with a visible scope notice. Linked and legacy Windows events remain protected, and event dates/times must match the Windows time zone.
 
 Turn on app notifications and exact alarms under **Sync → Reminder permissions**. Android may delay an inexact alarm. The app restores alarms after a reboot and unlock, an app update, or a fresh launch. HyperOS provides **Settings → Apps → Background autostart** to let Schedule recover on boot. Open Schedule again after a system force-stop. A reminder is deduplicated on Android by the event, start time and lead time. Previously armed reminders can catch up for 24 hours. Reminders already past at first import stay silent. Windows and Android can each surface their own notifications.
 

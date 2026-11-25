@@ -29,6 +29,9 @@
         if (kind === 'note' && typeof value.title !== 'string') fail(key);
         if (kind === 'idea' && (!['note','todo','done'].includes(value.state) || !Array.isArray(value.projects) ||
             value.projects.some(id => !idOK(id)) || (value.due !== '' && !dateOK(value.due)) || !Number.isFinite(value.order))) fail(key);
+      } else if (kind === 'analysis') {
+        if(parts.length!==1||!idOK(parts[0]))fail(key);
+        root.ScheduleAnalysis.validate(parts[0],value);
       } else if (kind === 'event') {
         if (parts.length !== 2 || !dateOK(parts[0]) || !idOK(parts[1]) || value.key !== parts.join('/') ||
             typeof value.title !== 'string' || !value.title.trim() || value.title.length > 100 || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time) ||
@@ -165,7 +168,7 @@
     const mapping=record.syncContent?.[key];
     return mapping&&same(content,mapping.stored)?copy(mapping.original):content;
   }
-  async function desktopExport(records, projects, images) {
+  async function desktopExport(records, projects, images, analyses={}) {
     const entities=dict(), assets=dict(), tokens=dict();
     const used=Object.values(records).map(r=>r.body||'').join('');
     for(const [token,value] of images) if(used.includes(token)) tokens[token]=await asset(value.src,assets);
@@ -190,6 +193,7 @@
         entities['idea/'+idea.id]={date,...content,projects:[...(idea.projectIds||[])].sort(),state:idea.done?'done':idea.todo?'todo':'note',important:!!idea.important,due:idea.dueDate||'',order:priorOrder?.index===index?priorOrder.order:index};
       });
     }
+    for(const [id,row] of Object.entries(analyses))entities['analysis/'+id]=copy(row);
     validate(entities);
     return {entities,assets};
   }
@@ -235,7 +239,7 @@
       const stored={text:value.text,formats:value.formats},original={text:item.text,formats:item.formats};
       if(!same(stored,original))result[item.date].syncContent[key]={stored,original};
     }
-    return {records:result,projects:nextProjects,images:[...images]};
+    return {records:result,projects:nextProjects,images:[...images],analyses:Object.fromEntries(Object.entries(entities).filter(([k])=>k.startsWith('analysis/')).map(([k,v])=>[k.slice(9),copy(v)]))};
   }
   async function phoneExport(state, events, readImage) {
     const entities=dict(),assets=dict(),cached=state._sync?.current||{}, names=dict();
@@ -247,6 +251,7 @@
       return value;
     }
     for(const p of state.projects) entities['project/'+p.id]={name:p.name};
+    for(const [id,row] of Object.entries(state.analyses||{}))entities['analysis/'+id]=copy(row);
     for(const date of new Set([...Object.keys(state.days),...Object.keys(cached).filter(k=>k.startsWith('note/')).map(k=>k.slice(5))])) {
       const prior=cached['note/'+date], text=state.days[date]||'';
       if(text||prior?.title||prior?.important)entities['note/'+date]={date,title:prior?.title||'',important:!!prior?.important,...await encode(text,prior)};
@@ -261,10 +266,11 @@
     validate(entities);return {entities,assets};
   }
   function phoneImport(entities, state, sync) {
-    validate(entities);const next=copy(state);next.days={};next.ideas=[];
+    validate(entities);const next=copy(state);next.days={};next.ideas=[];next.analyses={};
     next.projects=Object.entries(entities).filter(([k])=>k.startsWith('project/')).map(([k,v])=>({...state.projects.find(p=>p.id===k.slice(8)),id:k.slice(8),name:v.name}));
     for(const [key,value] of Object.entries(entities)) {
       if(key.startsWith('note/'))next.days[value.date]=value.text;
+      if(key.startsWith('analysis/'))next.analyses[key.slice(9)]=copy(value);
       if(key.startsWith('idea/')) next.ideas.push({id:key.slice(5),date:value.date,text:value.text,projects:value.projects,state:value.state,important:value.important,due:value.due,order:value.order});
     }
     next.ideas.sort((a,b)=>a.date.localeCompare(b.date)||a.order-b.order||a.id.localeCompare(b.id));

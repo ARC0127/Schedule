@@ -59,6 +59,7 @@
   });
   const records = {};
   let projects = [];
+  let analyses = {};
   const projectById = (id) => projects.find((p) => p.id === id);
   const legacyProjectIds = (r) =>
     Array.isArray(r?.projectIds)
@@ -1457,6 +1458,55 @@
     finally {dataBusy=false;button.disabled=false;}
   });
   $("#j-data-dialog").addEventListener("cancel",e=>{if(dataBusy)e.preventDefault();});
+  let analysisExecutable='';
+  const analysisDialog=$('#j-analysis-dialog');
+  const analysisLabels={queued:'等待电脑处理',running:'分析中',completed:'已完成',failed:'未完成',cancelled:'已取消'};
+  function analysisSources(){
+    const scope=$('#j-analysis-scope').value, sources=[];
+    for(const [date,r] of Object.entries(records).sort(([a],[b])=>a.localeCompare(b))){
+      const match=scope==='week'?date>=new Date(Date.now()-6*86400000).toLocaleDateString('sv-SE')&&date<=today:scope==='day'?date===state.selected:false;
+      if(match){if((r.body||'').trim())sources.push({key:'day/'+date,label:date+' '+(r.title||''),text:r.body});for(const event of eventsFor(r))sources.push({key:'event/'+date+'/'+event.id,label:date+' 日程',text:event.time+' '+event.title});}
+      if(scope.startsWith('project:'))for(const range of ideaRanges(r.body||'')){const idea=r.ideas?.find(i=>i.offset===range.offset);if(idea?.projectIds?.includes(scope.slice(8)))sources.push({key:'idea/'+idea.id,label:date+' · '+projectById(scope.slice(8))?.name,text:r.body.slice(range.offset+2,range.end)});}
+    }
+    return sources;
+  }
+  function analysisPreview(){try{$('#j-analysis-preview').textContent=analysisSources().map(s=>s.label+' ['+s.key+']\n'+window.ScheduleAnalysis.clean(s.text)).join('\n\n')||'所选范围没有文字记录';}catch(error){$('#j-analysis-status').textContent=error.message;}}
+  function renderAnalyses(){
+    const list=$('#j-analysis-list');list.replaceChildren();
+    for(const [id,row] of Object.entries(analyses).sort((a,b)=>b[1].createdAt.localeCompare(a[1].createdAt))){
+      const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent=row.title+' · '+analysisLabels[row.status];details.append(summary);
+      const meta=document.createElement('p');meta.className='j-analysis-hint';meta.textContent=row.provider+' · '+(row.model||'执行时选择最新旗舰')+' · '+row.effort+' · '+new Date(row.createdAt).toLocaleString();details.append(meta);
+      const output=document.createElement('pre');output.textContent=row.result||row.error||'手动请求已保存，电脑绑定该助手后处理。结果随普通同步返回。';details.append(output);
+      const source=document.createElement('details'),label=document.createElement('summary'),text=document.createElement('pre');label.textContent='本次来源快照';text.textContent=row.source;source.append(label,text);details.append(source);
+      const actions=document.createElement('div');actions.className='j-analysis-controls';
+      if(['failed','cancelled'].includes(row.status)){const retry=document.createElement('button');retry.textContent='重新分析';retry.onclick=async()=>{const next=structuredClone(row);Object.assign(next,{status:'queued',createdAt:new Date().toISOString(),model:'',result:'',error:''});const key=crypto.randomUUID();window.ScheduleAnalysis.validate(key,next);analyses[key]=next;try{await persist();renderAnalyses();}catch(error){delete analyses[key];$('#j-analysis-status').textContent=error.message;}};actions.append(retry);}
+      if(['queued','running'].includes(row.status)){const stop=document.createElement('button');stop.textContent='取消';stop.onclick=async()=>{const old=row.status;row.status='cancelled';try{await persist();if(old==='running')await window.journalNative.call('assistantCancel',{id});renderAnalyses();}catch(error){row.status=old;$('#j-analysis-status').textContent=error.message;}};actions.append(stop);}
+      details.append(actions);list.append(details);
+    }
+  }
+  $('#j-analysis-open').onclick=async()=>{
+    if(!window.journalNative){notify('请在 Schedule 桌面版绑定助手。');return;}
+    await window.journalFlush();$('#j-analysis-scope').innerHTML='<option value="day">当天记录</option><option value="week">最近 7 天</option>'+projects.map(p=>'<option value="project:'+esc(p.id)+'">项目 · '+esc(p.name)+'</option>').join('');
+    if(projectById(state.filter))$('#j-analysis-scope').value='project:'+state.filter;
+    analysisPreview();renderAnalyses();analysisDialog.showModal();
+    try{const config=await window.journalNative.call('assistantSettings');if(config.error)$('#j-analysis-status').textContent=config.error;analysisExecutable=config.executable;$('#j-analysis-binding').value=config.provider;$('#j-analysis-provider').value=config.provider;$('#j-analysis-enabled').checked=config.enabled;$('#j-analysis-binding-status').textContent=(config.enabled?'已绑定 ':'未启用 ')+config.provider+' · '+(config.executable||config.detected||'未检测到 CLI')+'\n项目目录：'+config.directory;}catch(error){$('#j-analysis-status').textContent=error.message;}
+  };
+  $('#j-analysis-close').onclick=()=>analysisDialog.close();$('#j-analysis-scope').onchange=analysisPreview;
+  $('#j-analysis-binding').onchange=()=>{analysisExecutable='';};
+  $('#j-analysis-exe').onclick=async()=>{const result=await window.journalNative.call('assistantExecutable');if(result.path){analysisExecutable=result.path;$('#j-analysis-binding-status').textContent=result.path;}};
+  $('#j-analysis-bind').onclick=async()=>{try{const result=await window.journalNative.call('setAssistant',{provider:$('#j-analysis-binding').value,enabled:$('#j-analysis-enabled').checked,executable:analysisExecutable});$('#j-analysis-provider').value=result.provider;$('#j-analysis-binding-status').textContent=(result.enabled?'已绑定 ':'已停用 ')+result.provider+'\n项目目录：'+result.directory;}catch(error){$('#j-analysis-status').textContent=error.message;}};
+  $('#j-analysis-folder').onclick=()=>window.journalNative.call('assistantFolder').catch(error=>$('#j-analysis-status').textContent=error.message);
+  $('#j-analysis-submit').onclick=async()=>{let id;try{await window.journalFlush();const title=$('#j-analysis-scope').selectedOptions[0].textContent+' · 分析与追问';const request=window.ScheduleAnalysis.create($('#j-analysis-provider').value,title,analysisSources(),$('#j-analysis-question').value);id=request.id;analyses[id]=request.row;await persist();$('#j-analysis-status').textContent='请求已保存。电脑处理完成后会随同步返回。';renderAnalyses();}catch(error){if(id)delete analyses[id];$('#j-analysis-status').textContent=error.message;}};
+  window.scheduleAnalysisPending=provider=>{if(!window.journalReady||apiBusy||composing)return null;const item=Object.entries(analyses).find(([,row])=>row.provider===provider&&['queued','running'].includes(row.status));return item?{id:item[0],row:item[1]}:null;};
+  window.scheduleAnalysisCancelled=id=>!analyses[id]||analyses[id].status==='cancelled';
+  async function updateAnalysis(request){
+    const row=analyses[request.id];if(!row||!['queued','running'].includes(row.status))return false;
+    for(const key of ['provider','title','createdAt','source','instructions','effort'])if(row[key]!==request.expected?.[key])return false;
+    const next={...row};for(const key of ['status','model','result','error'])if(request.patch?.[key]!==undefined)next[key]=request.patch[key];
+    window.ScheduleAnalysis.validate(request.id,next);analyses[request.id]=next;
+    try{await persist();}catch(error){analyses[request.id]=row;throw error;}renderAnalyses();return true;
+  }
+
   const bluetoothDialog = $("#j-bluetooth-dialog"), bluetoothDevice = $("#j-bluetooth-device"), bluetoothStatus = $("#j-bluetooth-status");
   let updateBusy=false,updateReady=false;
   async function checkSoftwareUpdate(){
@@ -1521,7 +1571,7 @@
     for(const [key,conflict] of Object.entries(syncReview.conflicts)) {
       const field=document.createElement("fieldset"),legend=document.createElement("legend");
       const value=conflict.desktop||conflict.phone||conflict.base;
-      const kind=key.split("/")[0],names={idea:"想法",note:"当日笔记",event:"日程",project:"项目"};
+      const kind=key.split("/")[0],names={idea:"想法",note:"当日笔记",event:"日程",project:"项目",analysis:"分析与追问"};
       legend.textContent=`${names[kind]||kind} · ${value.date||value.key?.split("/")[0]||value.name||key}`;
       field.append(legend);
       const columns=document.createElement("div");columns.className="j-sync-versions";
@@ -1532,6 +1582,7 @@
         title.textContent=side==="desktop"?"保留电脑版本":"保留手机版本";
         // Plain text prevents imported notes from injecting markup into the review.
         pre.textContent=item===null?"已删除":[item.name,item.title,item.text?.replace(/!\[[^\]]*\]\(schedule-image:[^)]+\)/g,"[图片]"),
+          kind==='analysis'&&['状态：'+analysisLabels[item.status],item.model,item.result||item.error,item.source].filter(Boolean).join('\n'),
           item.time&&`时间：${item.key?.split("/")[0]||""} ${item.time}`,
           item.minutes!==undefined&&`提醒：${item.minutes<0?"不提醒":`提前 ${item.minutes} 分钟`}`,
           item.state&&`状态：${{note:"笔记",todo:"待办",done:"已完成"}[item.state]}`,
@@ -2245,6 +2296,7 @@
       dayExpanded: state.dayExpanded,
       sidebarScroll: state.sidebarScroll,
       projects,
+      analyses,
       newIdeaProjects: [],
       edits: state.edits,
     };
@@ -2297,6 +2349,8 @@
     }
     const p = saved.privateContent;
     if (!p || typeof p !== "object") return;
+    analyses = p.analyses || {};
+    for(const [id,row] of Object.entries(analyses))window.ScheduleAnalysis.validate(id,row);
     if (Array.isArray(p.projects)) {
       const ids = new Set(),
         valid = p.projects.every(
@@ -2733,7 +2787,7 @@
     return persist();
   };
   let apiBusy = false;
-  const apiSnapshot = () => JSON.stringify({records,projects,images:[...imageAssets]});
+  const apiSnapshot = () => JSON.stringify({records,projects,analyses,images:[...imageAssets]});
   async function apiRevision() {
     const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(apiSnapshot()));
     return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
@@ -2748,9 +2802,9 @@
   }
   async function executeApi(request) {
     if(!request || typeof request!=="object")throw Error("INVALID_REQUEST");
-    const operations=["capabilities","list_projects","get_day","get_project","search","add_idea","update_idea","create_project","save_event","delete_event","sync_journal","sync_inventory"];
+    const operations=["capabilities","list_projects","get_day","get_project","search","add_idea","update_idea","create_project","save_event","delete_event","sync_journal","sync_inventory","assistant_update"];
     if(!operations.includes(request.op))throw Error("UNKNOWN_OPERATION");
-    if(apiBusy||composing||projectEditorController?.isComposing||inlineIdeaEditor?.controller?.isComposing||scheduleBusy||dataBusy||root.querySelector("dialog[open]:not(#j-bluetooth-dialog)"))throw Error("BUSY: finish the current edit or dialog before calling the API");
+    if(apiBusy||composing||projectEditorController?.isComposing||inlineIdeaEditor?.controller?.isComposing||scheduleBusy||dataBusy||root.querySelector("dialog[open]:not(#j-bluetooth-dialog):not(#j-analysis-dialog)"))throw Error("BUSY: finish the current edit or dialog before calling the API");
     const activeElement=document.activeElement, activeSelection=editorSelection();
     apiBusy=true;root.inert=true;
     let rollback=null;
@@ -2761,11 +2815,12 @@
       if(write && request.op!=="sync_journal" && request.revision!==revision)throw Error("CONFLICT: read current state and reapply the intended change");
       let result;
       if(request.op==="capabilities")result={version:1,operations,processId:window.__journalBoot.processId,appDirectory:window.__journalBoot.appDirectory,dataDirectory:window.__journalBoot.dataDirectory,writeRule:"Read, then send the returned revision. A conflict requires a fresh read; never overwrite journal.json.",transport:"same-user Windows named pipe"};
-      else if(request.op==="sync_inventory")result=Object.keys(await window.journalNative.call("prepareSyncAssets",(await window.ScheduleSyncModel.desktopExport(records,projects,imageAssets)).assets));
+      else if(request.op==="assistant_update")result=await updateAnalysis(request);
+      else if(request.op==="sync_inventory")result=Object.keys(await window.journalNative.call("prepareSyncAssets",(await window.ScheduleSyncModel.desktopExport(records,projects,imageAssets,analyses)).assets));
       else if(request.op==="sync_journal") {
         const model=window.ScheduleSyncModel, payload=request.payload;
         if(!payload||payload.schema!==2)throw Error("Unsupported journal sync version");
-        const local=await model.desktopExport(records,projects,imageAssets);
+        const local=await model.desktopExport(records,projects,imageAssets,analyses);
         const addEvents=target=>{
           for(const key of Object.keys(target))if(key.startsWith("event/"))delete target[key];
           for(const [date,r] of Object.entries(records))for(const s of eventsFor(r)) {
@@ -2799,12 +2854,12 @@
         const draft=await model.desktopImport(merged.entities,assets,records,projects,imageAssets);
         const saved=await window.journalNative.call("commitSync",{...draft,events:Object.entries(merged.entities).filter(([k])=>k.startsWith("event/")).map(([,v])=>v)});
         Object.keys(records).forEach(key=>delete records[key]);Object.assign(records,draft.records);
-        projects=draft.projects;state.edits={...records};imageAssets.clear();for(const pair of draft.images)imageAssets.set(...pair);
+        analyses=draft.analyses;projects=draft.projects;state.edits={...records};imageAssets.clear();for(const pair of draft.images)imageAssets.set(...pair);
         window.journalNative.schedules=saved.schedules;applyScheduleProjection(saved.schedules);
-        bodyHistory.clear();renderCalendar();renderEditor();
+        bodyHistory.clear();renderCalendar();renderEditor();renderAnalyses();
         warning=saved.warning||"";
         }
-        const actual=await model.desktopExport(records,projects,imageAssets);addEvents(actual.entities);
+        const actual=await model.desktopExport(records,projects,imageAssets,analyses);addEvents(actual.entities);
         result={schema:2,status:"complete",reviewId:review?.peer===request.peer?review.id:"",entities:actual.entities,conflicts:merged.conflicts,assets:await window.journalNative.call("prepareSyncAssets",{...assets,...actual.assets}),warning};
         }
       }
@@ -2882,7 +2937,7 @@
         await persist();rollback=null;
         renderCalendar();renderEditor();
       }
-      return {ok:true,revision:write?await apiRevision():revision,result};
+      return {ok:true,revision:write||request.op==='assistant_update'?await apiRevision():revision,result};
     } catch(error) {
       if(rollback) {
         for(const date of Object.keys(records))delete records[date];Object.assign(records,rollback.records);

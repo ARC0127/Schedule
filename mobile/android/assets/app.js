@@ -11,7 +11,7 @@ let day = today(), month = day.slice(0, 7), tab = 'day', project = null;
 let calendarExpanded = false;
 let renderVersion = 0, motionRunning = false;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-const pageOrder = ['day', 'tasks', 'projects', 'sync'];
+const pageOrder = ['day', 'tasks', 'projects', 'analysis', 'sync'];
 let state, events, permissions, activeDraft, inlineEditor;
 let toastTimer;
 const action = (name, value = '') => NativeSchedule.action(name, value);
@@ -42,6 +42,7 @@ const paths = {
   day: 'M4 5h16v16H4z M4 9h16 M8 3v4 M16 3v4 M8 13h.01 M12 13h.01 M16 13h.01 M8 17h.01 M12 17h.01',
   tasks: 'M5 4h14v16H5z M8 12l3 3 5-6',
   projects: 'M3 7h7l2 2h9v10H3z M3 7V5h7l2 2h8',
+  analysis: 'M4 4h16v12H9l-5 4z M8 8h8 M8 12h5',
   sync: 'M12 2v20l6-5-12-10 M12 2l6 5-12 10',
   edit: 'M5 15l10-10 4 4-10 10H5z M13 7l4 4',
   checked: 'M5 5h14v14H5z M8 12l3 3 5-6',
@@ -109,7 +110,7 @@ function render(keepScroll = true) {
   renderVersion++;
   const scroll = keepScroll ? screen.scrollTop : 0;
   document.documentElement.lang = zh ? 'zh-CN' : 'en';
-  const tabLabels = { day: t('日历', 'Calendar'), tasks: t('待办', 'Tasks'), projects: t('项目', 'Projects'), sync: t('同步', 'Sync') };
+  const tabLabels = { day: t('日历', 'Calendar'), tasks: t('待办', 'Tasks'), projects: t('项目', 'Projects'), analysis: t('追问', 'Reflect'), sync: t('同步', 'Sync') };
   $('#tabs').replaceChildren(...Object.entries(tabLabels).map(([id, label]) => {
     const item = button('', () => switchTab(id));
     item.append(icon(id), node('span', label));
@@ -120,7 +121,7 @@ function render(keepScroll = true) {
     month: 'long', day: 'numeric', weekday: 'short'
   }).format(new Date());
   screen.replaceChildren();
-  ({ day: renderDay, tasks: renderTasks, projects: renderProjects, sync: renderSync })[tab]();
+  ({ day: renderDay, tasks: renderTasks, projects: renderProjects, analysis: renderAnalysis, sync: renderSync })[tab]();
   screen.scrollTop = scroll;
 }
 
